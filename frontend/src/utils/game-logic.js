@@ -11,19 +11,19 @@
 
 // 脚質テーブル（フェーズ倍率の合計が 3.10 になる）
 export const RUNNING_STYLES = {
-  大逃げ: { early: 1.8, middle: 1.0, late: 0.3, description: '序盤から全力。終盤でバテる' },
-  逃げ: { early: 1.45, middle: 0.95, late: 0.7, description: '先頭を走りながらスタミナ温存' },
+  大逃げ: { early: 1.65, middle: 1.0, late: 0.45, description: '序盤から全力。終盤でバテる' },
+  逃げ: { early: 1.4, middle: 0.95, late: 0.75, description: '先頭を走りながらスタミナ温存' },
   先行: { early: 1.15, middle: 1.05, late: 0.9, description: '先団に位置し粘り強く走る' },
-  差し: { early: 0.75, middle: 1.0, late: 1.35, description: '中団で足をため終盤に加速' },
-  追込: { early: 0.6, middle: 0.8, late: 1.7, description: '後方から最後に一気に追い込む' },
-  直線一気: { early: 0.4, middle: 0.65, late: 2.05, description: '最後方から直線で全力追い込み' },
+  差し: { early: 0.8, middle: 1.0, late: 1.3, description: '中団で足をため終盤に加速' },
+  追込: { early: 0.65, middle: 0.85, late: 1.6, description: '後方から最後に一気に追い込む' },
+  直線一気: { early: 0.55, middle: 0.75, late: 1.8, description: '最後方から直線で全力追い込み' },
   まくり: { early: 0.7, middle: 1.6, late: 0.8, description: '中盤から大外を豪快にまくる' },
 };
 export const RUNNING_STYLE_NAMES = Object.keys(RUNNING_STYLES);
 
 // レース定数
-export const RACE_STEPS = 145; // 総ステップ数
-export const STEP_INTERVAL_MS = 120; // ステップ間隔
+export const RACE_STEPS = 200; // 総ステップ数
+export const STEP_INTERVAL_MS = 180; // ステップ間隔
 
 // ゲーム設定
 export const HORSE_COUNT = 8;
@@ -87,9 +87,9 @@ function makeHorseName(used) {
 
 // 1 頭の馬データを生成する
 export function generateHorse(id, usedNames) {
-  const speed = randInt(50, 90);
-  const stamina = randInt(50, 90);
-  const stability = randInt(50, 90);
+  const speed = randInt(65, 90);
+  const stamina = randInt(65, 90);
+  const stability = randInt(65, 90);
   const runningStyle = RUNNING_STYLE_NAMES[randInt(0, RUNNING_STYLE_NAMES.length - 1)];
   const trueCondition = Math.random(); // 非表示
   const displayCondition = clamp(trueCondition + gaussianNoise(0, 0.2), 0, 1);
@@ -212,7 +212,7 @@ export function stepRace(state, stepIndex) {
     // stability 実値が低いほど乱数幅が大きい
     const noiseRange = clamp(1.2 - h.stabilityReal / 120, 0.15, 0.7);
     const random = 1 + (Math.random() * 2 - 1) * noiseRange;
-    const advance = (realScore / 75) * styleMult * pace * condMult * random;
+    const advance = (realScore / 68) * styleMult * pace * condMult * random;
     let newPos = h.position + advance;
     let finished = h.finished;
     let finishStep = h.finishStep;
