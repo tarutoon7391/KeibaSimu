@@ -133,8 +133,8 @@ function RaceTrack({ raceState, betHorseId }) {
               <div
                 className={`h-full ${
                   isBet ? 'bg-accent' : 'bg-slate-400'
-                } transition-[width] duration-100 ease-linear`}
-                style={{ width: `${Math.min(100, h.position)}%` }}
+                }`}
+                style={{ width: `${Math.min(100, h.position)}%`, transition: 'width 150ms linear' }}
               />
             </div>
             <span className="w-16 text-xs text-right text-slate-500">
