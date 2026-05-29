@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全体テーマ：ライト系背景 / sans-serif */
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  background-color: #f4f6f9;
+  color: #1f2937;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, 'Hiragino Sans', 'Yu Gothic', sans-serif;
+}
