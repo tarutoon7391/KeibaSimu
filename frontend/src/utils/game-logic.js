@@ -242,6 +242,82 @@ export function rankHorses(state) {
   return sorted.map((h, i) => ({ ...h, rank: i + 1 }));
 }
 
+// ---------- 賭け方 ----------
+
+// 賭け方の種類（key, label, 選択必要馬数）
+export const BET_TYPES = [
+  { key: '単勝', label: '単勝', horseCount: 1 },
+  { key: '複勝', label: '複勝', horseCount: 1 },
+  { key: '馬連', label: '馬連', horseCount: 2 },
+  { key: '馬単', label: '馬単', horseCount: 2 },
+  { key: '3連複', label: '3連複', horseCount: 3 },
+  { key: '3連単', label: '3連単', horseCount: 3 },
+];
+
+// 賭け方・選択馬に応じたオッズを計算する
+// horses: calculateOdds 済みの馬配列
+// betType: BET_TYPES の key
+// horseIds: 選択した馬ID の配列（選択順）
+export function calculateBetOdds(horses, betType, horseIds) {
+  const oddsMap = {};
+  horses.forEach((h) => { oddsMap[h.id] = h.odds; });
+  const o = (id) => oddsMap[id] ?? 1;
+  const round1 = (v) => Math.round(v * 10) / 10;
+
+  switch (betType) {
+    case '単勝':
+      return Math.max(MIN_ODDS, o(horseIds[0]));
+    case '複勝':
+      return Math.max(MIN_ODDS, round1(o(horseIds[0]) / 3));
+    case '馬連':
+      return Math.max(MIN_ODDS, round1(o(horseIds[0]) * o(horseIds[1]) * 0.8));
+    case '馬単':
+      return Math.max(MIN_ODDS, round1(o(horseIds[0]) * o(horseIds[1]) * 0.8 * 1.5));
+    case '3連複':
+      return Math.max(MIN_ODDS, round1(o(horseIds[0]) * o(horseIds[1]) * o(horseIds[2]) * 0.6));
+    case '3連単':
+      return Math.max(MIN_ODDS, round1(o(horseIds[0]) * o(horseIds[1]) * o(horseIds[2]) * 0.6 * 4.0));
+    default:
+      return MIN_ODDS;
+  }
+}
+
+// 賭け方別の的中判定
+// rankedState: rankHorses 済みの配列
+// betType: 賭け方の key
+// horseIds: 選択した馬ID の配列（選択順）
+export function isWinningBetType(rankedState, betType, horseIds) {
+  if (!horseIds || horseIds.length === 0) return false;
+  const rank = (id) => {
+    const h = rankedState.find((r) => r.id === id);
+    return h ? h.rank : null;
+  };
+
+  switch (betType) {
+    case '単勝':
+      return rank(horseIds[0]) === 1;
+    case '複勝': {
+      const r = rank(horseIds[0]);
+      return r !== null && r <= 3;
+    }
+    case '馬連': {
+      const r0 = rank(horseIds[0]);
+      const r1 = rank(horseIds[1]);
+      return (r0 === 1 && r1 === 2) || (r0 === 2 && r1 === 1);
+    }
+    case '馬単':
+      return rank(horseIds[0]) === 1 && rank(horseIds[1]) === 2;
+    case '3連複': {
+      const rs = new Set(horseIds.map(rank));
+      return rs.has(1) && rs.has(2) && rs.has(3);
+    }
+    case '3連単':
+      return rank(horseIds[0]) === 1 && rank(horseIds[1]) === 2 && rank(horseIds[2]) === 3;
+    default:
+      return false;
+  }
+}
+
 // ---------- ベット結果 ----------
 
 // 払戻金額を返す（的中時のみ）
@@ -249,7 +325,7 @@ export function calcPayout(betAmount, odds) {
   return Math.floor(betAmount * odds);
 }
 
-// 的中判定
+// 単勝的中判定（後方互換のため残す）
 export function isWinningBet(rankedState, betHorseId) {
   if (betHorseId == null) return false;
   const top = rankedState.find((h) => h.rank === 1);
