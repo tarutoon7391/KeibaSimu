@@ -196,11 +196,20 @@ export function selectHorsesFromPool(count = HORSE_COUNT) {
   });
 }
 
-// レース条件（コース・馬場）をランダム生成する
+// コース種別ごとの距離範囲（メートル、100m刻み）
+const DISTANCE_OPTIONS = {
+  short: [1000, 1100, 1200, 1300, 1400],
+  mile:  [1600, 1700, 1800],
+  long:  [2000, 2200, 2400, 2600, 2800, 3000, 3200],
+};
+
+// レース条件（コース・馬場・距離）をランダム生成する
 export function generateRaceConfig() {
   const courseType = RACE_COURSES[Math.floor(Math.random() * RACE_COURSES.length)];
   const trackType = RACE_TRACKS[Math.floor(Math.random() * RACE_TRACKS.length)];
-  return { courseType, trackType };
+  const opts = DISTANCE_OPTIONS[courseType] ?? DISTANCE_OPTIONS.mile;
+  const distance = opts[Math.floor(Math.random() * opts.length)];
+  return { courseType, trackType, distance };
 }
 
 // 出走馬一覧を生成する（プールから抽出）

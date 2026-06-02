@@ -17,6 +17,7 @@ import {
   HORSE_COUNT,
   BET_TYPES,
   generateHorses,
+  generateRaceConfig,
   calculateOdds,
   calculateBetOdds,
   initRaceState,
@@ -28,7 +29,7 @@ import {
   conditionBadge,
 } from '../utils/game-logic.js';
 
-// ステータスバー（speed/stamina/stability の数値＋バー）
+// ステータスバー（数値＋バー）
 function StatBar({ label, value, color }) {
   const pct = Math.min(100, Math.max(0, ((value - 40) / 60) * 100));
   return (
@@ -97,11 +98,17 @@ function HorseCard({ horse, selectionIndex, betType, onSelect }) {
         <span className={`text-xs rounded-full px-2 py-0.5 ${badge.color}`}>
           {badge.label}
         </span>
+        <span className="text-xs bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">
+          距離：{horse.distanceFit}
+        </span>
       </div>
       <div className="flex flex-col gap-1 mt-1">
-        <StatBar label="speed" value={horse.speed} color="bg-rose-400" />
-        <StatBar label="stamina" value={horse.stamina} color="bg-emerald-400" />
-        <StatBar label="stability" value={horse.stability} color="bg-sky-400" />
+        <StatBar label="速さ" value={horse.speed} color="bg-rose-400" />
+        <StatBar label="スタミナ" value={horse.stamina} color="bg-emerald-400" />
+        <StatBar label="安定性" value={horse.stability} color="bg-sky-400" />
+        <StatBar label="瞬発力" value={horse.burst} color="bg-violet-400" />
+        <StatBar label="芝適性" value={horse.turfFit} color="bg-lime-400" />
+        <StatBar label="ダート適" value={horse.dirtFit} color="bg-amber-400" />
       </div>
     </button>
   );
@@ -128,6 +135,31 @@ function StyleGuide() {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+// レース情報バナー
+function RaceInfoBanner({ raceConfig }) {
+  if (!raceConfig) return null;
+  const { courseType, trackType, distance } = raceConfig;
+  const trackLabel = trackType === 'turf' ? '芝' : 'ダート';
+  const courseLabel = courseType === 'short' ? '短距離' : courseType === 'mile' ? 'マイル' : '長距離';
+  return (
+    <div className="bg-white rounded-2xl shadow-sm px-4 py-2 flex items-center gap-4 text-sm text-slate-700 flex-wrap">
+      <span className="font-bold text-slate-500">レース情報</span>
+      <span>
+        <span className="text-slate-400">距離：</span>
+        <span className="font-bold text-slate-800">{distance}m</span>
+      </span>
+      <span>
+        <span className="text-slate-400">馬場：</span>
+        <span className="font-bold text-slate-800">{trackLabel}</span>
+      </span>
+      <span>
+        <span className="text-slate-400">コース：</span>
+        <span className="font-bold text-slate-800">{courseLabel}</span>
+      </span>
     </div>
   );
 }
@@ -193,6 +225,13 @@ function RaceTrack({ raceState, betHorseIds, betType }) {
 // 結果一覧
 function ResultList({ ranking, betHorseIds, betType }) {
   const useOrderedBadge = betType === '馬単' || betType === '3連単';
+
+  // 1着のfinishStepを取得
+  const winnerFinishStep = useMemo(() => {
+    const winner = ranking.find((h) => h.rank === 1);
+    return winner ? winner.finishStep : null;
+  }, [ranking]);
+
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4">
       <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
@@ -204,6 +243,17 @@ function ResultList({ ranking, betHorseIds, betType }) {
           const betIdx = betHorseIds.indexOf(h.id);
           const isBet = betIdx !== -1;
           const medalBadge = isBet && useOrderedBadge ? MEDAL_BADGES[betIdx] : null;
+          const badge = conditionBadge(h.displayCondition);
+
+          // タイム差（1着からの差を秒換算）
+          let timeDiff = null;
+          if (h.rank === 1) {
+            timeDiff = '+0.0秒';
+          } else if (h.finishStep != null && winnerFinishStep != null) {
+            const diffSec = ((h.finishStep - winnerFinishStep) * STEP_INTERVAL_MS) / 1000;
+            timeDiff = `+${diffSec.toFixed(1)}秒`;
+          }
+
           return (
             <li
               key={h.id}
@@ -238,8 +288,13 @@ function ResultList({ ranking, betHorseIds, betType }) {
                   {h.name}
                 </span>
                 <span className="text-xs text-slate-400">({h.runningStyle})</span>
+                <span className={`text-xs rounded-full px-1.5 py-0.5 ${badge.color}`}>
+                  {badge.label}
+                </span>
               </span>
-              <span className="text-xs text-slate-400">{h.odds.toFixed(1)}倍</span>
+              <span className="text-xs text-slate-400 ml-2 shrink-0">
+                {timeDiff ?? '未完走'}
+              </span>
             </li>
           );
         })}
@@ -252,6 +307,7 @@ function ResultList({ ranking, betHorseIds, betType }) {
 export default function Page() {
   const [phase, setPhase] = useState('betting'); // betting | racing | result
   const [coins, setCoins] = useState(INITIAL_COINS);
+  const [raceConfig, setRaceConfig] = useState(() => generateRaceConfig());
   const [horses, setHorses] = useState(() => calculateOdds(generateHorses(HORSE_COUNT)));
   const [betType, setBetType] = useState('単勝');
   const [selectedHorseIds, setSelectedHorseIds] = useState([]);
@@ -330,6 +386,8 @@ export default function Page() {
 
   // 新しいレースを準備
   const prepareNewRace = useCallback(() => {
+    const newConfig = generateRaceConfig();
+    setRaceConfig(newConfig);
     setHorses(calculateOdds(generateHorses(HORSE_COUNT)));
     setBetType('単勝');
     setSelectedHorseIds([]);
@@ -358,10 +416,10 @@ export default function Page() {
       amount: betAmount,
       odds: betOdds,
     });
-    setRaceState(initRaceState(horses));
+    setRaceState(initRaceState(horses, raceConfig));
     setStepIndex(0);
     setPhase('racing');
-  }, [canStart, betType, selectedHorseIds, betAmount, horses]);
+  }, [canStart, betType, selectedHorseIds, betAmount, horses, raceConfig]);
 
   // レース中のループ
   useEffect(() => {
@@ -441,6 +499,11 @@ export default function Page() {
         {phase === 'betting' && (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
             <section>
+              {/* レース情報 */}
+              <div className="mb-4">
+                <RaceInfoBanner raceConfig={raceConfig} />
+              </div>
+
               {/* 賭け方選択タブ */}
               <div className="flex flex-wrap gap-1 mb-4">
                 {BET_TYPES.map((bt) => (
@@ -570,6 +633,8 @@ export default function Page() {
 
         {phase === 'racing' && (
           <div className="flex flex-col gap-4">
+            {/* レース情報 */}
+            <RaceInfoBanner raceConfig={raceConfig} />
             <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-bold text-slate-800">レース中…</h2>
@@ -598,6 +663,8 @@ export default function Page() {
 
         {phase === 'result' && (
           <div className="flex flex-col gap-4">
+            {/* レース情報 */}
+            <RaceInfoBanner raceConfig={raceConfig} />
             <div className="bg-white rounded-2xl shadow-sm p-6 text-center">
               {lastPayout > 0 ? (
                 <p className="text-2xl font-bold text-accent">
@@ -625,3 +692,4 @@ export default function Page() {
     </div>
   );
 }
+
