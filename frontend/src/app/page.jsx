@@ -15,14 +15,16 @@ import {
   INITIAL_COINS,
   MIN_BET,
   HORSE_COUNT,
+  BET_TYPES,
   generateHorses,
   calculateOdds,
+  calculateBetOdds,
   initRaceState,
   stepRace,
   isRaceFinished,
   rankHorses,
   calcPayout,
-  isWinningBet,
+  isWinningBetType,
   conditionBadge,
 } from '../utils/game-logic.js';
 
@@ -41,18 +43,25 @@ function StatBar({ label, value, color }) {
 }
 
 // 馬カード（ベットフェーズ）
-function HorseCard({ horse, selected, onSelect }) {
+// selectionIndex: null=未選択, 0/1/2=選択順（0始まり）
+function HorseCard({ horse, selectionIndex, onSelect }) {
   const badge = conditionBadge(horse.displayCondition);
+  const isSelected = selectionIndex !== null;
   return (
     <button
       type="button"
       onClick={() => onSelect(horse.id)}
       className={`text-left bg-white rounded-2xl shadow-sm hover:shadow-md transition border-2 ${
-        selected ? 'border-accent ring-2 ring-orange-200' : 'border-transparent'
+        isSelected ? 'border-accent ring-2 ring-orange-200' : 'border-transparent'
       } p-4 flex flex-col gap-2`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
+          {isSelected && (
+            <span className="text-xs bg-accent text-white rounded-full w-5 h-5 flex items-center justify-center font-bold shrink-0">
+              {selectionIndex + 1}
+            </span>
+          )}
           <span className="text-xs bg-slate-100 text-slate-700 rounded-full px-2 py-0.5">
             #{horse.id}
           </span>
@@ -103,7 +112,7 @@ function StyleGuide() {
 }
 
 // レース中のプログレスバー
-function RaceTrack({ raceState, betHorseId }) {
+function RaceTrack({ raceState, betHorseIds }) {
   // 順位順に並び替えて表示する
   const ordered = useMemo(() => {
     return [...raceState].sort((a, b) => {
@@ -117,7 +126,7 @@ function RaceTrack({ raceState, betHorseId }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-2">
       {ordered.map((h, idx) => {
-        const isBet = h.id === betHorseId;
+        const isBet = betHorseIds.includes(h.id);
         return (
           <div key={h.id} className="flex items-center gap-2">
             <span className="w-6 text-xs text-slate-400 text-right">{idx + 1}位</span>
@@ -148,7 +157,7 @@ function RaceTrack({ raceState, betHorseId }) {
 }
 
 // 結果一覧
-function ResultList({ ranking, betHorseId }) {
+function ResultList({ ranking, betHorseIds }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4">
       <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
@@ -157,7 +166,7 @@ function ResultList({ ranking, betHorseId }) {
       </h3>
       <ol className="space-y-1">
         {ranking.map((h) => {
-          const isBet = h.id === betHorseId;
+          const isBet = betHorseIds.includes(h.id);
           return (
             <li
               key={h.id}
@@ -199,36 +208,68 @@ export default function Page() {
   const [phase, setPhase] = useState('betting'); // betting | racing | result
   const [coins, setCoins] = useState(INITIAL_COINS);
   const [horses, setHorses] = useState(() => calculateOdds(generateHorses(HORSE_COUNT)));
-  const [selectedHorseId, setSelectedHorseId] = useState(null);
+  const [betType, setBetType] = useState('単勝');
+  const [selectedHorseIds, setSelectedHorseIds] = useState([]);
   const [betAmount, setBetAmount] = useState(MIN_BET);
   const [raceState, setRaceState] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [ranking, setRanking] = useState([]);
   const [lastPayout, setLastPayout] = useState(0);
-  const [lastBet, setLastBet] = useState({ horseId: null, amount: 0, odds: 0 });
+  const [lastBet, setLastBet] = useState({ horseIds: [], betType: '単勝', amount: 0, odds: 0 });
   const timerRef = useRef(null);
 
-  // 選択中の馬
-  const selectedHorse = useMemo(
-    () => horses.find((h) => h.id === selectedHorseId) || null,
-    [horses, selectedHorseId]
+  // 現在の賭け方情報
+  const betTypeInfo = useMemo(
+    () => BET_TYPES.find((b) => b.key === betType) ?? BET_TYPES[0],
+    [betType]
   );
+  const requiredCount = betTypeInfo.horseCount;
+
+  // 賭け方変更時に選択をリセット
+  const handleBetTypeChange = useCallback((key) => {
+    setBetType(key);
+    setSelectedHorseIds([]);
+  }, []);
+
+  // 馬の選択・解除
+  const handleSelectHorse = useCallback((id) => {
+    setSelectedHorseIds((prev) => {
+      const idx = prev.indexOf(id);
+      if (idx !== -1) {
+        // すでに選択済み → 解除
+        return prev.filter((hid) => hid !== id);
+      }
+      if (prev.length < requiredCount) {
+        return [...prev, id];
+      }
+      // 選択数が上限に達している場合は最も古い選択を置き換え
+      if (requiredCount === 1) return [id];
+      return [...prev.slice(1), id];
+    });
+  }, [requiredCount]);
 
   // 払戻予定額（リアルタイム）
   const expectedPayout = useMemo(() => {
-    if (!selectedHorse) return 0;
-    return calcPayout(betAmount, selectedHorse.odds);
-  }, [selectedHorse, betAmount]);
+    if (selectedHorseIds.length < requiredCount) return 0;
+    const odds = calculateBetOdds(horses, betType, selectedHorseIds);
+    return calcPayout(betAmount, odds);
+  }, [selectedHorseIds, requiredCount, horses, betType, betAmount]);
+
+  // 現在の組み合わせオッズ
+  const currentOdds = useMemo(() => {
+    if (selectedHorseIds.length < requiredCount) return null;
+    return calculateBetOdds(horses, betType, selectedHorseIds);
+  }, [selectedHorseIds, requiredCount, horses, betType]);
 
   // ベット額バリデーション
   const canStart = useMemo(() => {
     return (
-      selectedHorseId !== null &&
+      selectedHorseIds.length === requiredCount &&
       betAmount >= MIN_BET &&
       betAmount <= coins &&
       phase === 'betting'
     );
-  }, [selectedHorseId, betAmount, coins, phase]);
+  }, [selectedHorseIds, requiredCount, betAmount, coins, phase]);
 
   // クイックベット
   const handleQuickBet = useCallback(
@@ -245,7 +286,8 @@ export default function Page() {
   // 新しいレースを準備
   const prepareNewRace = useCallback(() => {
     setHorses(calculateOdds(generateHorses(HORSE_COUNT)));
-    setSelectedHorseId(null);
+    setBetType('単勝');
+    setSelectedHorseIds([]);
     setBetAmount(MIN_BET);
     setRaceState([]);
     setStepIndex(0);
@@ -262,17 +304,19 @@ export default function Page() {
 
   // レース開始
   const handleStartRace = useCallback(() => {
-    if (!canStart || !selectedHorse) return;
+    if (!canStart) return;
+    const betOdds = calculateBetOdds(horses, betType, selectedHorseIds);
     setCoins((c) => c - betAmount);
     setLastBet({
-      horseId: selectedHorse.id,
+      horseIds: selectedHorseIds,
+      betType,
       amount: betAmount,
-      odds: selectedHorse.odds,
+      odds: betOdds,
     });
     setRaceState(initRaceState(horses));
     setStepIndex(0);
     setPhase('racing');
-  }, [canStart, selectedHorse, betAmount, horses]);
+  }, [canStart, betType, selectedHorseIds, betAmount, horses]);
 
   // レース中のループ
   useEffect(() => {
@@ -295,7 +339,7 @@ export default function Page() {
         const ranked = rankHorses(next);
         setRanking(ranked);
         // 払戻判定
-        if (isWinningBet(ranked, lastBet.horseId)) {
+        if (isWinningBetType(ranked, lastBet.betType, lastBet.horseIds)) {
           const payout = calcPayout(lastBet.amount, lastBet.odds);
           setLastPayout(payout);
           setCoins((c) => c + payout);
@@ -308,6 +352,16 @@ export default function Page() {
       return next;
     });
   }, [stepIndex, phase, lastBet]);
+
+  // 選択中の馬の表示文字列
+  const selectionLabel = useMemo(() => {
+    if (selectedHorseIds.length === 0) return null;
+    const names = selectedHorseIds.map((id) => {
+      const h = horses.find((horse) => horse.id === id);
+      return h ? h.name : `#${id}`;
+    });
+    return names.join(' → ');
+  }, [selectedHorseIds, horses]);
 
   // ヘッダー
   const Header = (
@@ -342,32 +396,65 @@ export default function Page() {
         {phase === 'betting' && (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
             <section>
+              {/* 賭け方選択タブ */}
+              <div className="flex flex-wrap gap-1 mb-4">
+                {BET_TYPES.map((bt) => (
+                  <button
+                    key={bt.key}
+                    type="button"
+                    onClick={() => handleBetTypeChange(bt.key)}
+                    className={`px-3 py-1.5 text-sm rounded-lg font-semibold transition ${
+                      betType === bt.key
+                        ? 'bg-accent text-white'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    {bt.label}
+                  </button>
+                ))}
+              </div>
+
               <h2 className="text-base font-bold text-slate-800 mb-3">
-                出走表（単勝予想）
+                出走表（{betType}予想）
+                {betTypeInfo.horseCount > 1 && (
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    — {betTypeInfo.horseCount}頭を順番に選択
+                    {(betType === '馬単' || betType === '3連単') ? '（選択順が着順）' : '（順不同）'}
+                  </span>
+                )}
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {horses.map((h) => (
-                  <HorseCard
-                    key={h.id}
-                    horse={h}
-                    selected={h.id === selectedHorseId}
-                    onSelect={setSelectedHorseId}
-                  />
-                ))}
+                {horses.map((h) => {
+                  const idx = selectedHorseIds.indexOf(h.id);
+                  return (
+                    <HorseCard
+                      key={h.id}
+                      horse={h}
+                      selectionIndex={idx === -1 ? null : idx}
+                      onSelect={handleSelectHorse}
+                    />
+                  );
+                })}
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm p-4 mt-4 flex flex-col gap-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="text-sm text-slate-600">
-                    {selectedHorse ? (
+                    {selectionLabel ? (
                       <>
-                        選択中: <span className="font-bold text-slate-800">{selectedHorse.name}</span>{' '}
-                        <span className="text-accent font-bold">
-                          {selectedHorse.odds.toFixed(1)}倍
-                        </span>
+                        選択中:{' '}
+                        <span className="font-bold text-slate-800">{selectionLabel}</span>
+                        {currentOdds !== null && (
+                          <>
+                            {' '}
+                            <span className="text-accent font-bold">
+                              {currentOdds.toFixed(1)}倍
+                            </span>
+                          </>
+                        )}
                       </>
                     ) : (
-                      <>馬を選択してください</>
+                      <>馬を{requiredCount}頭選択してください</>
                     )}
                   </div>
                   <div className="text-sm text-slate-600">
@@ -443,7 +530,7 @@ export default function Page() {
                 ステップ {Math.min(stepIndex, RACE_STEPS)} / {RACE_STEPS}
               </span>
             </div>
-            <RaceTrack raceState={raceState} betHorseId={lastBet.horseId} />
+            <RaceTrack raceState={raceState} betHorseIds={lastBet.horseIds} />
           </div>
         )}
 
@@ -451,13 +538,9 @@ export default function Page() {
           <div className="flex flex-col gap-4">
             <div className="bg-white rounded-2xl shadow-sm p-6 text-center">
               {lastPayout > 0 ? (
-                <>
-                  <p className="text-2xl font-bold text-accent">🎉 的中！</p>
-                  <p className="mt-2 text-slate-700">
-                    払戻金額:{' '}
-                    <span className="font-bold text-accent text-xl">{lastPayout}C</span>
-                  </p>
-                </>
+                <p className="text-2xl font-bold text-accent">
+                  🎉 的中！ +{lastPayout}C
+                </p>
               ) : (
                 <>
                   <p className="text-2xl font-bold text-slate-700">😢 残念…</p>
@@ -465,7 +548,7 @@ export default function Page() {
                 </>
               )}
             </div>
-            <ResultList ranking={ranking} betHorseId={lastBet.horseId} />
+            <ResultList ranking={ranking} betHorseIds={lastBet.horseIds} />
             <button
               type="button"
               onClick={prepareNewRace}
