@@ -42,26 +42,47 @@ function StatBar({ label, value, color }) {
   );
 }
 
+// 選択順・着順に対応するメダルバッジ情報（0始まりの index を渡す）
+const MEDAL_BADGES = [
+  { emoji: '🥇', label: '1着予想', bg: 'bg-amber-100', text: 'text-amber-800', border: 'border-amber-400' },
+  { emoji: '🥈', label: '2着予想', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-400' },
+  { emoji: '🥉', label: '3着予想', bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-400' },
+];
+
 // 馬カード（ベットフェーズ）
 // selectionIndex: null=未選択, 0/1/2=選択順（0始まり）
-function HorseCard({ horse, selectionIndex, onSelect }) {
+// betType: 現在の賭け方（馬単/3連単のとき金銀銅バッジを表示）
+function HorseCard({ horse, selectionIndex, betType, onSelect }) {
   const badge = conditionBadge(horse.displayCondition);
   const isSelected = selectionIndex !== null;
+  const useOrderedBadge = isSelected && (betType === '馬単' || betType === '3連単');
+  const medalBadge = useOrderedBadge ? MEDAL_BADGES[selectionIndex] : null;
   return (
     <button
       type="button"
       onClick={() => onSelect(horse.id)}
       className={`text-left bg-white rounded-2xl shadow-sm hover:shadow-md transition border-2 ${
-        isSelected ? 'border-accent ring-2 ring-orange-200' : 'border-transparent'
+        isSelected
+          ? medalBadge
+            ? `${medalBadge.border} ring-2 ring-orange-100`
+            : 'border-accent ring-2 ring-orange-200'
+          : 'border-transparent'
       } p-4 flex flex-col gap-2`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {isSelected && (
+          {medalBadge ? (
+            <span
+              className={`text-base leading-none ${medalBadge.bg} ${medalBadge.text} rounded-full w-7 h-7 flex items-center justify-center font-bold shrink-0`}
+              title={medalBadge.label}
+            >
+              {medalBadge.emoji}
+            </span>
+          ) : isSelected ? (
             <span className="text-xs bg-accent text-white rounded-full w-5 h-5 flex items-center justify-center font-bold shrink-0">
               {selectionIndex + 1}
             </span>
-          )}
+          ) : null}
           <span className="text-xs bg-slate-100 text-slate-700 rounded-full px-2 py-0.5">
             #{horse.id}
           </span>
@@ -175,19 +196,18 @@ function ResultList({ ranking, betHorseIds }) {
               }`}
             >
               <span className="flex items-center gap-2">
-                <span
-                  className={`w-6 text-center text-xs font-bold rounded ${
-                    h.rank === 1
-                      ? 'bg-amber-200 text-amber-900'
-                      : h.rank === 2
-                      ? 'bg-slate-200 text-slate-800'
-                      : h.rank === 3
-                      ? 'bg-orange-200 text-orange-900'
-                      : 'bg-slate-50 text-slate-500'
-                  }`}
-                >
-                  {h.rank}
-                </span>
+                {h.rank <= 3 ? (
+                  <span
+                    className="w-6 text-center text-base leading-none"
+                    title={`${h.rank}着`}
+                  >
+                    {MEDAL_BADGES[h.rank - 1].emoji}
+                  </span>
+                ) : (
+                  <span className="w-6 text-center text-xs font-bold rounded bg-slate-50 text-slate-500">
+                    {h.rank}
+                  </span>
+                )}
                 <span className={`font-semibold ${isBet ? 'text-accent' : 'text-slate-700'}`}>
                   {isBet && <Star className="w-3 h-3 inline mr-1 fill-current" />}
                   {h.name}
@@ -431,6 +451,7 @@ export default function Page() {
                       key={h.id}
                       horse={h}
                       selectionIndex={idx === -1 ? null : idx}
+                      betType={betType}
                       onSelect={handleSelectHorse}
                     />
                   );
