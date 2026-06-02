@@ -133,7 +133,9 @@ function StyleGuide() {
 }
 
 // レース中のプログレスバー
-function RaceTrack({ raceState, betHorseIds }) {
+function RaceTrack({ raceState, betHorseIds, betType }) {
+  const useOrderedBadge = betType === '馬単' || betType === '3連単';
+
   // 順位順に並び替えて表示する
   const ordered = useMemo(() => {
     return [...raceState].sort((a, b) => {
@@ -147,16 +149,27 @@ function RaceTrack({ raceState, betHorseIds }) {
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-2">
       {ordered.map((h, idx) => {
-        const isBet = betHorseIds.includes(h.id);
+        const betIdx = betHorseIds.indexOf(h.id);
+        const isBet = betIdx !== -1;
+        const medalBadge = isBet && useOrderedBadge ? MEDAL_BADGES[betIdx] : null;
         return (
           <div key={h.id} className="flex items-center gap-2">
             <span className="w-6 text-xs text-slate-400 text-right">{idx + 1}位</span>
             <span
-              className={`w-32 truncate text-sm font-semibold ${
+              className={`w-36 truncate text-sm font-semibold flex items-center gap-1 ${
                 isBet ? 'text-accent' : 'text-slate-700'
               }`}
             >
-              {isBet && <Star className="w-3 h-3 inline mr-1 fill-current" />}
+              {medalBadge ? (
+                <span
+                  className={`text-base leading-none ${medalBadge.bg} ${medalBadge.text} rounded-full w-6 h-6 flex items-center justify-center shrink-0`}
+                  title={medalBadge.label}
+                >
+                  {medalBadge.emoji}
+                </span>
+              ) : isBet ? (
+                <Star className="w-3 h-3 shrink-0 fill-current" />
+              ) : null}
               {h.name}
             </span>
             <div className="flex-1 h-4 bg-slate-100 rounded-full overflow-hidden relative">
@@ -178,7 +191,8 @@ function RaceTrack({ raceState, betHorseIds }) {
 }
 
 // 結果一覧
-function ResultList({ ranking, betHorseIds }) {
+function ResultList({ ranking, betHorseIds, betType }) {
+  const useOrderedBadge = betType === '馬単' || betType === '3連単';
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4">
       <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
@@ -187,7 +201,9 @@ function ResultList({ ranking, betHorseIds }) {
       </h3>
       <ol className="space-y-1">
         {ranking.map((h) => {
-          const isBet = betHorseIds.includes(h.id);
+          const betIdx = betHorseIds.indexOf(h.id);
+          const isBet = betIdx !== -1;
+          const medalBadge = isBet && useOrderedBadge ? MEDAL_BADGES[betIdx] : null;
           return (
             <li
               key={h.id}
@@ -209,7 +225,16 @@ function ResultList({ ranking, betHorseIds }) {
                   </span>
                 )}
                 <span className={`font-semibold ${isBet ? 'text-accent' : 'text-slate-700'}`}>
-                  {isBet && <Star className="w-3 h-3 inline mr-1 fill-current" />}
+                  {medalBadge ? (
+                    <span
+                      className={`inline-flex items-center justify-center text-xs ${medalBadge.bg} ${medalBadge.text} rounded-full w-5 h-5 mr-1 font-bold`}
+                      title={medalBadge.label}
+                    >
+                      {medalBadge.emoji}
+                    </span>
+                  ) : isBet ? (
+                    <Star className="w-3 h-3 inline mr-1 fill-current" />
+                  ) : null}
                   {h.name}
                 </span>
                 <span className="text-xs text-slate-400">({h.runningStyle})</span>
@@ -545,13 +570,29 @@ export default function Page() {
 
         {phase === 'racing' && (
           <div className="flex flex-col gap-4">
-            <div className="bg-white rounded-2xl shadow-sm p-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-800">レース中…</h2>
-              <span className="text-xs text-slate-400">
-                ステップ {Math.min(stepIndex, RACE_STEPS)} / {RACE_STEPS}
-              </span>
+            <div className="bg-white rounded-2xl shadow-sm p-4 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-bold text-slate-800">レース中…</h2>
+                <span className="text-xs text-slate-400">
+                  ステップ {Math.min(stepIndex, RACE_STEPS)} / {RACE_STEPS}
+                </span>
+              </div>
+              {(lastBet.betType === '馬単' || lastBet.betType === '3連単') && (
+                <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+                  {lastBet.horseIds.map((id, i) => {
+                    const badge = MEDAL_BADGES[i];
+                    const horseName = (horses.find((h) => h.id === id) ?? {}).name ?? `#${id}`;
+                    return (
+                      <span key={id} className={`flex items-center gap-1 px-2 py-0.5 rounded-full border ${badge.border} ${badge.bg} ${badge.text}`}>
+                        <span>{badge.emoji}</span>
+                        <span>{badge.label}：{horseName}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            <RaceTrack raceState={raceState} betHorseIds={lastBet.horseIds} />
+            <RaceTrack raceState={raceState} betHorseIds={lastBet.horseIds} betType={lastBet.betType} />
           </div>
         )}
 
@@ -569,7 +610,7 @@ export default function Page() {
                 </>
               )}
             </div>
-            <ResultList ranking={ranking} betHorseIds={lastBet.horseIds} />
+            <ResultList ranking={ranking} betHorseIds={lastBet.horseIds} betType={lastBet.betType} />
             <button
               type="button"
               onClick={prepareNewRace}
