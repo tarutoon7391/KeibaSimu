@@ -50,6 +50,20 @@ const MEDAL_BADGES = [
   { emoji: '🥉', label: '3着予想', bg: 'bg-orange-100', text: 'text-orange-800', border: 'border-orange-400' },
 ];
 
+const COURSE_LABELS = {
+  short: '短距離',
+  mile: '中距離',
+  long: '長距離',
+};
+
+function formatDistanceFit(distanceFit) {
+  if (distanceFit === 'all') return '短距離〜中距離〜長距離';
+  return distanceFit
+    .split('-')
+    .map((fit) => COURSE_LABELS[fit] ?? fit)
+    .join('〜');
+}
+
 // 馬カード（ベットフェーズ）
 // selectionIndex: null=未選択, 0/1/2=選択順（0始まり）
 // betType: 現在の賭け方（馬単/3連単のとき金銀銅バッジを表示）
@@ -99,7 +113,7 @@ function HorseCard({ horse, selectionIndex, betType, onSelect }) {
           {badge.label}
         </span>
         <span className="text-xs bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">
-          距離：{horse.distanceFit}
+          距離：{formatDistanceFit(horse.distanceFit)}
         </span>
       </div>
       <div className="flex flex-col gap-1 mt-1">
@@ -144,7 +158,7 @@ function RaceInfoBanner({ raceConfig }) {
   if (!raceConfig) return null;
   const { courseType, trackType, distance } = raceConfig;
   const trackLabel = trackType === 'turf' ? '芝' : 'ダート';
-  const courseLabel = courseType === 'short' ? '短距離' : courseType === 'mile' ? 'マイル' : '長距離';
+  const courseLabel = COURSE_LABELS[courseType] ?? courseType;
   return (
     <div className="bg-white rounded-2xl shadow-sm px-4 py-2 flex items-center gap-4 text-sm text-slate-700 flex-wrap">
       <span className="font-bold text-slate-500">レース情報</span>
@@ -692,4 +706,3 @@ export default function Page() {
     </div>
   );
 }
-
