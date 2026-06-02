@@ -146,6 +146,9 @@ const HORSE_POOL = [
   { name: 'カッパムテキ', speed: 'SSS', stamina: 'SS', stability: 'SS', burst: 'SSS', turfFit: 'SSS', dirtFit: 'SSS', distanceFit: 'all', runningStyle: '追込' },
   { name: 'カッパオイコミ', speed: 'D', stamina: 'SSS', stability: 'SSS', burst: 'SSS', turfFit: 'SS', dirtFit: 'SS', distanceFit: 'long', runningStyle: '直線一気' },
   { name: 'カッパハチャメチャ', speed: 'SSS', stamina: 'E', stability: 'E', burst: 'SSS', turfFit: 'SSS', dirtFit: 'SSS', distanceFit: 'short', runningStyle: '大逃げ' },
+  { name: 'デュントデュン', speed: 'SS', stamina: 'S', stability: 'S', burst: 'A', turfFit: 'S', dirtFit: 'S', distanceFit: 'all', runningStyle: '先行' },
+  { name: 'デュンハサイキョウ', speed: 'SS', stamina: 'SS', stability: 'A', burst: 'A', turfFit: 'S', dirtFit: 'S', distanceFit: 'all', runningStyle: '差し' },
+  { name: 'マビキハヒカマニ', speed: 'A', stamina: 'B', stability: 'B', burst: 'S', turfFit: 'A', dirtFit: 'A', distanceFit: 'all', runningStyle: '先行' },
 ];
 
 // ---------- グレード変換ユーティリティ ----------
