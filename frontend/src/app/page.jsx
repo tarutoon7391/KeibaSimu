@@ -29,8 +29,8 @@ import {
   conditionBadge,
 } from '../utils/game-logic.js';
 
-// ステータスバー（数値＋バー）
-function StatBar({ label, value, color }) {
+// ステータスバー（グレード＋バー）
+function StatBar({ label, value, grade, color }) {
   const pct = Math.min(100, Math.max(0, ((value - 40) / 60) * 100));
   return (
     <div className="flex items-center gap-2 text-xs">
@@ -38,7 +38,7 @@ function StatBar({ label, value, color }) {
       <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
         <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
-      <span className="w-8 text-right font-semibold text-slate-700">{value}</span>
+      <span className="w-8 text-right font-semibold text-slate-700">{grade ?? value}</span>
     </div>
   );
 }
@@ -103,12 +103,12 @@ function HorseCard({ horse, selectionIndex, betType, onSelect }) {
         </span>
       </div>
       <div className="flex flex-col gap-1 mt-1">
-        <StatBar label="速さ" value={horse.speed} color="bg-rose-400" />
-        <StatBar label="スタミナ" value={horse.stamina} color="bg-emerald-400" />
-        <StatBar label="安定性" value={horse.stability} color="bg-sky-400" />
-        <StatBar label="瞬発力" value={horse.burst} color="bg-violet-400" />
-        <StatBar label="芝適性" value={horse.turfFit} color="bg-lime-400" />
-        <StatBar label="ダート適" value={horse.dirtFit} color="bg-amber-400" />
+        <StatBar label="速さ" value={horse.speed} grade={horse.speedGrade} color="bg-rose-400" />
+        <StatBar label="スタミナ" value={horse.stamina} grade={horse.staminaGrade} color="bg-emerald-400" />
+        <StatBar label="安定性" value={horse.stability} grade={horse.stabilityGrade} color="bg-sky-400" />
+        <StatBar label="瞬発力" value={horse.burst} grade={horse.burstGrade} color="bg-violet-400" />
+        <StatBar label="芝適性" value={horse.turfFit} grade={horse.turfFitGrade} color="bg-lime-400" />
+        <StatBar label="ダート適" value={horse.dirtFit} grade={horse.dirtFitGrade} color="bg-amber-400" />
       </div>
     </button>
   );
