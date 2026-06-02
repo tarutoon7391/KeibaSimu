@@ -33,7 +33,7 @@ export const HOUSE_MARGIN = 0.85; // 控除率15%
 export const MIN_ODDS = 1.1;
 
 // ---------- ステータス変換テーブル ----------
-export const STATUS_TABLE = { E: 10, D: 20, C: 30, B: 40, A: 55, S: 70, SS: 85, SSS: 100 };
+export const STATUS_TABLE = { E: 70, D: 73, C: 76, B: 80, A: 84, S: 88, SS: 93, SSS: 97 };
 
 // ---------- レース条件 ----------
 export const RACE_COURSES = ['short', 'mile', 'long'];
