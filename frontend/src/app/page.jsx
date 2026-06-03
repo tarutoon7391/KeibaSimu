@@ -29,16 +29,12 @@ import {
   conditionBadge,
 } from '../utils/game-logic.js';
 
-// ステータスバー（グレード＋バー）
-function StatBar({ label, value, grade, color }) {
-  const pct = Math.min(100, Math.max(0, ((value - 40) / 60) * 100));
+// ステータス（グレードのみ）
+function StatBar({ label, grade }) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="w-16 text-slate-500">{label}</span>
-      <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
-        <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="w-8 text-right font-semibold text-slate-700">{grade ?? value}</span>
+    <div className="flex items-center gap-1 text-xs">
+      <span className="text-slate-500">{label}</span>
+      <span className="font-semibold text-slate-700">{grade}</span>
     </div>
   );
 }
@@ -117,12 +113,12 @@ function HorseCard({ horse, selectionIndex, betType, onSelect }) {
         </span>
       </div>
       <div className="flex flex-col gap-1 mt-1">
-        <StatBar label="速さ" value={horse.speed} grade={horse.speedGrade} color="bg-rose-400" />
-        <StatBar label="スタミナ" value={horse.stamina} grade={horse.staminaGrade} color="bg-emerald-400" />
-        <StatBar label="安定性" value={horse.stability} grade={horse.stabilityGrade} color="bg-sky-400" />
-        <StatBar label="瞬発力" value={horse.burst} grade={horse.burstGrade} color="bg-violet-400" />
-        <StatBar label="芝適性" value={horse.turfFit} grade={horse.turfFitGrade} color="bg-lime-400" />
-        <StatBar label="ダート適" value={horse.dirtFit} grade={horse.dirtFitGrade} color="bg-amber-400" />
+        <StatBar label="速さ" grade={horse.speedGrade} />
+        <StatBar label="スタミナ" grade={horse.staminaGrade} />
+        <StatBar label="安定性" grade={horse.stabilityGrade} />
+        <StatBar label="瞬発力" grade={horse.burstGrade} />
+        <StatBar label="芝適性" grade={horse.turfFitGrade} />
+        <StatBar label="ダート適" grade={horse.dirtFitGrade} />
       </div>
     </button>
   );
