@@ -29,19 +29,19 @@ import {
   conditionBadge,
 } from '../utils/game-logic.js';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? '';
+const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 // ===== API ヘルパー =====
 
 function getToken() {
-  return localStorage.getItem('keibasimu_token');
+  return localStorage.getItem('token');
 }
 
 async function apiFetch(path, options = {}) {
   const token = getToken();
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
   if (token) headers['Authorization'] = 'Bearer ' + token;
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTPエラー ${res.status}`);
   return data;
@@ -52,7 +52,7 @@ async function apiRegister(username, password) {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   });
-  localStorage.setItem('keibasimu_token', data.token);
+  localStorage.setItem('token', data.token);
   return data.user;
 }
 
@@ -61,7 +61,7 @@ async function apiLogin(username, password) {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   });
-  localStorage.setItem('keibasimu_token', data.token);
+  localStorage.setItem('token', data.token);
   return data.user;
 }
 
@@ -634,6 +634,120 @@ function RankingModal({ onClose, authUser }) {
   );
 }
 
+// ===== ログイン画面 =====
+function LoginPage({ onAuth }) {
+  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (mode === 'register' && password !== confirmPassword) {
+      setError('パスワードが一致しません');
+      return;
+    }
+    setLoading(true);
+    try {
+      let user;
+      if (mode === 'login') {
+        user = await apiLogin(username, password);
+      } else {
+        user = await apiRegister(username, password);
+      }
+      onAuth(user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const switchMode = (next) => {
+    setMode(next);
+    setError('');
+    setUsername('');
+    setPassword('');
+    setConfirmPassword('');
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#F4F6F9' }}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-8">
+        <h1 className="text-2xl font-bold text-slate-800 text-center mb-6">🏇 KeibaSimu</h1>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">ユーザー名</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              maxLength={20}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200 text-sm"
+              placeholder="username"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">パスワード</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200 text-sm"
+              placeholder="password"
+            />
+          </div>
+          {mode === 'register' && (
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">パスワード確認</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200 text-sm"
+                placeholder="パスワードを再入力"
+              />
+            </div>
+          )}
+          {error && <p className="text-xs text-rose-500">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-accent hover:bg-orange-600 disabled:bg-slate-300 text-white font-bold py-2.5 rounded-xl transition"
+          >
+            {loading ? '処理中...' : mode === 'login' ? 'ログイン' : '登録'}
+          </button>
+        </form>
+        <div className="mt-4 text-center">
+          {mode === 'login' ? (
+            <button
+              type="button"
+              onClick={() => switchMode('register')}
+              className="text-xs text-slate-500 hover:text-slate-700 underline"
+            >
+              アカウントをお持ちでない方はこちら
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => switchMode('login')}
+              className="text-xs text-slate-500 hover:text-slate-700 underline"
+            >
+              すでにアカウントをお持ちの方はこちら
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===== メインページ =====
 export default function Page() {
   const [phase, setPhase] = useState('betting'); // betting | racing | result
@@ -652,6 +766,7 @@ export default function Page() {
 
   // 認証状態
   const [authUser, setAuthUser] = useState(null);
+  const [screen, setScreen] = useState(() => (localStorage.getItem('token') ? 'game' : 'auth'));
   const [showAuth, setShowAuth] = useState(false);
   const [showRanking, setShowRanking] = useState(false);
 
@@ -665,7 +780,8 @@ export default function Page() {
         setCoins(user.coins);
       })
       .catch(() => {
-        localStorage.removeItem('keibasimu_token');
+        localStorage.removeItem('token');
+        setScreen('auth');
       });
   }, []);
 
@@ -673,14 +789,16 @@ export default function Page() {
   const handleAuth = useCallback((user) => {
     setAuthUser(user);
     setCoins(user.coins);
+    setScreen('game');
     setShowAuth(false);
   }, []);
 
   // ログアウト
   const handleLogout = useCallback(() => {
-    localStorage.removeItem('keibasimu_token');
+    localStorage.removeItem('token');
     setAuthUser(null);
     setCoins(INITIAL_COINS);
+    setScreen('auth');
   }, []);
 
   // 現在の賭け方情報
@@ -911,6 +1029,10 @@ export default function Page() {
       </div>
     </header>
   );
+
+  if (screen === 'auth') {
+    return <LoginPage onAuth={handleAuth} />;
+  }
 
   return (
     <div className="min-h-full">
