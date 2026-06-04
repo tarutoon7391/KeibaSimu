@@ -37,6 +37,26 @@ const migrations = [
   // 将来カラム追加用テンプレート例（新フィールドはデフォルト値で補完）
   `ALTER TABLE horses ADD COLUMN IF NOT EXISTS owner_id INTEGER;`,
   `ALTER TABLE race_results ADD COLUMN IF NOT EXISTS true_condition REAL NOT NULL DEFAULT 0.5;`,
+
+  // users テーブル
+  `CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(20) UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    coins INTEGER NOT NULL DEFAULT 1000,
+    created_at TIMESTAMP DEFAULT NOW()
+  );`,
+
+  // bet_records テーブル
+  `CREATE TABLE IF NOT EXISTS bet_records (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id),
+    bet_type VARCHAR(10) NOT NULL,
+    bet_amount INTEGER NOT NULL,
+    payout INTEGER NOT NULL,
+    odds NUMERIC(6,1) NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+  );`,
 ];
 
 async function runMigrations() {

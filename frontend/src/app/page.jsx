@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Trophy, Coins, Play, RotateCcw, Star, Wind } from 'lucide-react';
+import { Trophy, Coins, Play, RotateCcw, Star, Wind, LogIn, LogOut, BarChart2, X } from 'lucide-react';
 import {
   RUNNING_STYLES,
   STEP_INTERVAL_MS,
@@ -28,6 +28,71 @@ import {
   isWinningBetType,
   conditionBadge,
 } from '../utils/game-logic.js';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+// ===== API ヘルパー =====
+
+function getToken() {
+  return localStorage.getItem('keibasimu_token');
+}
+
+async function apiFetch(path, options = {}) {
+  const token = getToken();
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTPエラー ${res.status}`);
+  return data;
+}
+
+async function apiRegister(username, password) {
+  const data = await apiFetch('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+  localStorage.setItem('keibasimu_token', data.token);
+  return data.user;
+}
+
+async function apiLogin(username, password) {
+  const data = await apiFetch('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+  localStorage.setItem('keibasimu_token', data.token);
+  return data.user;
+}
+
+async function apiMe() {
+  return apiFetch('/api/auth/me');
+}
+
+async function apiUpdateCoins(coins) {
+  return apiFetch('/api/auth/coins', {
+    method: 'PATCH',
+    body: JSON.stringify({ coins }),
+  });
+}
+
+async function apiRecordBet(bet_type, bet_amount, payout, odds) {
+  return apiFetch('/api/rankings/record', {
+    method: 'POST',
+    body: JSON.stringify({ bet_type, bet_amount, payout, odds }),
+  });
+}
+
+async function apiRankingCoins() {
+  return apiFetch('/api/rankings/coins');
+}
+
+async function apiRankingPayout(betType) {
+  const path = betType ? `/api/rankings/payout/${encodeURIComponent(betType)}` : '/api/rankings/payout';
+  return apiFetch(path);
+}
+
+// ===== コンポーネント =====
 
 // ステータス（グレードのみ）
 function StatBar({ label, grade }) {
@@ -313,7 +378,263 @@ function ResultList({ ranking, betHorseIds, betType }) {
   );
 }
 
-// メインページ
+// ===== 認証モーダル =====
+function AuthModal({ onClose, onAuth }) {
+  const [tab, setTab] = useState('login'); // login | register
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      let user;
+      if (tab === 'login') {
+        user = await apiLogin(username, password);
+      } else {
+        user = await apiRegister(username, password);
+      }
+      onAuth(user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 relative">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+          <LogIn className="w-5 h-5 text-accent" />
+          アカウント
+        </h2>
+        {/* タブ切り替え */}
+        <div className="flex mb-4 border border-slate-200 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => { setTab('login'); setError(''); }}
+            className={`flex-1 py-2 text-sm font-semibold transition ${
+              tab === 'login' ? 'bg-accent text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            ログイン
+          </button>
+          <button
+            type="button"
+            onClick={() => { setTab('register'); setError(''); }}
+            className={`flex-1 py-2 text-sm font-semibold transition ${
+              tab === 'register' ? 'bg-accent text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            新規登録
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">ユーザー名（3〜20文字の英数字）</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              maxLength={20}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200 text-sm"
+              placeholder="username"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">パスワード（6文字以上）</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-200 text-sm"
+              placeholder="password"
+            />
+          </div>
+          {error && <p className="text-xs text-rose-500">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-accent hover:bg-orange-600 disabled:bg-slate-300 text-white font-bold py-2 rounded-xl transition"
+          >
+            {loading ? '処理中...' : tab === 'login' ? 'ログイン' : '新規登録'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ===== ランキングモーダル =====
+const RANKING_BET_TABS = ['全馬券', '単勝', '複勝', '馬連', '馬単', '3連複', '3連単'];
+
+function RankingModal({ onClose, authUser }) {
+  const [tab, setTab] = useState('coins'); // coins | payout
+  const [betTab, setBetTab] = useState('全馬券');
+  const [coinsRanking, setCoinsRanking] = useState([]);
+  const [payoutRanking, setPayoutRanking] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadCoins = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await apiRankingCoins();
+      setCoinsRanking(data);
+    } catch {
+      // ランキング取得失敗時は空のまま
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const loadPayout = useCallback(async (bt) => {
+    setLoading(true);
+    try {
+      const data = await apiRankingPayout(bt === '全馬券' ? null : bt);
+      setPayoutRanking(data);
+    } catch {
+      setPayoutRanking([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'coins') {
+      loadCoins();
+    } else {
+      loadPayout(betTab);
+    }
+  }, [tab, betTab, loadCoins, loadPayout]);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 relative max-h-[90vh] flex flex-col">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+        >
+          <X className="w-5 h-5" />
+        </button>
+        <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+          <BarChart2 className="w-5 h-5 text-accent" />
+          ランキング
+        </h2>
+        {/* メインタブ */}
+        <div className="flex mb-3 border border-slate-200 rounded-lg overflow-hidden shrink-0">
+          <button
+            type="button"
+            onClick={() => setTab('coins')}
+            className={`flex-1 py-2 text-sm font-semibold transition ${
+              tab === 'coins' ? 'bg-accent text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            総所持金
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab('payout')}
+            className={`flex-1 py-2 text-sm font-semibold transition ${
+              tab === 'payout' ? 'bg-accent text-white' : 'bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            一撃最高払戻
+          </button>
+        </div>
+        {/* 馬券種別タブ（払戻時のみ） */}
+        {tab === 'payout' && (
+          <div className="flex flex-wrap gap-1 mb-3 shrink-0">
+            {RANKING_BET_TABS.map((bt) => (
+              <button
+                key={bt}
+                type="button"
+                onClick={() => setBetTab(bt)}
+                className={`px-2 py-1 text-xs rounded-lg font-semibold transition ${
+                  betTab === bt ? 'bg-accent text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                {bt}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="overflow-y-auto flex-1">
+          {loading ? (
+            <p className="text-center text-slate-400 py-8">読み込み中...</p>
+          ) : tab === 'coins' ? (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-slate-400 text-xs border-b">
+                  <th className="text-left pb-2 w-8">順位</th>
+                  <th className="text-left pb-2">ユーザー名</th>
+                  <th className="text-right pb-2">所持金</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coinsRanking.length === 0 ? (
+                  <tr><td colSpan={3} className="text-center text-slate-400 py-6">データがありません</td></tr>
+                ) : coinsRanking.map((row, i) => (
+                  <tr
+                    key={i}
+                    className={`border-b border-slate-50 ${authUser && row.username === authUser.username ? 'bg-orange-50 font-semibold' : ''}`}
+                  >
+                    <td className="py-2 text-slate-400">{i + 1}</td>
+                    <td className="py-2 text-slate-800">{row.username}</td>
+                    <td className="py-2 text-right text-accent font-bold">{row.coins.toLocaleString()}C</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-slate-400 text-xs border-b">
+                  <th className="text-left pb-2 w-8">順位</th>
+                  <th className="text-left pb-2">ユーザー名</th>
+                  <th className="text-left pb-2">馬券</th>
+                  <th className="text-right pb-2">払戻</th>
+                  <th className="text-right pb-2">倍率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payoutRanking.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center text-slate-400 py-6">データがありません</td></tr>
+                ) : payoutRanking.map((row, i) => (
+                  <tr
+                    key={i}
+                    className={`border-b border-slate-50 ${authUser && row.username === authUser.username ? 'bg-orange-50 font-semibold' : ''}`}
+                  >
+                    <td className="py-2 text-slate-400">{i + 1}</td>
+                    <td className="py-2 text-slate-800">{row.username}</td>
+                    <td className="py-2 text-slate-600">{row.bet_type}</td>
+                    <td className="py-2 text-right text-accent font-bold">{Number(row.payout).toLocaleString()}C</td>
+                    <td className="py-2 text-right text-slate-500">{Number(row.odds).toFixed(1)}倍</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===== メインページ =====
 export default function Page() {
   const [phase, setPhase] = useState('betting'); // betting | racing | result
   const [coins, setCoins] = useState(INITIAL_COINS);
@@ -328,6 +649,39 @@ export default function Page() {
   const [lastPayout, setLastPayout] = useState(0);
   const [lastBet, setLastBet] = useState({ horseIds: [], betType: '単勝', amount: 0, odds: 0 });
   const timerRef = useRef(null);
+
+  // 認証状態
+  const [authUser, setAuthUser] = useState(null);
+  const [showAuth, setShowAuth] = useState(false);
+  const [showRanking, setShowRanking] = useState(false);
+
+  // JWT自動ログイン（初期化）
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+    apiMe()
+      .then((user) => {
+        setAuthUser(user);
+        setCoins(user.coins);
+      })
+      .catch(() => {
+        localStorage.removeItem('keibasimu_token');
+      });
+  }, []);
+
+  // ログイン・登録成功時
+  const handleAuth = useCallback((user) => {
+    setAuthUser(user);
+    setCoins(user.coins);
+    setShowAuth(false);
+  }, []);
+
+  // ログアウト
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('keibasimu_token');
+    setAuthUser(null);
+    setCoins(INITIAL_COINS);
+  }, []);
 
   // 現在の賭け方情報
   const betTypeInfo = useMemo(
@@ -411,9 +765,13 @@ export default function Page() {
 
   // 所持コインリセット
   const handleReset = useCallback(() => {
-    setCoins(INITIAL_COINS);
+    const resetCoins = INITIAL_COINS;
+    setCoins(resetCoins);
+    if (authUser) {
+      apiUpdateCoins(resetCoins).catch(() => {});
+    }
     prepareNewRace();
-  }, [prepareNewRace]);
+  }, [prepareNewRace, authUser]);
 
   // レース開始
   const handleStartRace = useCallback(() => {
@@ -452,19 +810,36 @@ export default function Page() {
         const ranked = rankHorses(next);
         setRanking(ranked);
         // 払戻判定
+        let payout = 0;
         if (isWinningBetType(ranked, lastBet.betType, lastBet.horseIds)) {
-          const payout = calcPayout(lastBet.amount, lastBet.odds);
+          payout = calcPayout(lastBet.amount, lastBet.odds);
           setLastPayout(payout);
-          setCoins((c) => c + payout);
+          setCoins((c) => {
+            const newCoins = c + payout;
+            // ログイン中はAPIでコイン同期・払戻記録
+            if (authUser) {
+              apiUpdateCoins(newCoins).catch(() => {});
+              apiRecordBet(lastBet.betType, lastBet.amount, payout, lastBet.odds).catch(() => {});
+            }
+            return newCoins;
+          });
         } else {
           setLastPayout(0);
+          // 外れの場合もコイン同期・記録（payout=0）
+          setCoins((c) => {
+            if (authUser) {
+              apiUpdateCoins(c).catch(() => {});
+              apiRecordBet(lastBet.betType, lastBet.amount, 0, lastBet.odds).catch(() => {});
+            }
+            return c;
+          });
         }
         setPhase('result');
         if (timerRef.current) clearInterval(timerRef.current);
       }
       return next;
     });
-  }, [stepIndex, phase, lastBet]);
+  }, [stepIndex, phase, lastBet, authUser]);
 
   // 選択中の馬の表示文字列
   const selectionLabel = useMemo(() => {
@@ -484,18 +859,53 @@ export default function Page() {
           <Trophy className="w-5 h-5 text-accent" />
           KeibaSimu
         </h1>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {/* ランキングボタン */}
+          <button
+            type="button"
+            onClick={() => setShowRanking(true)}
+            className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-700 text-sm"
+          >
+            <BarChart2 className="w-4 h-4" />
+            <span className="hidden sm:inline">ランキング</span>
+          </button>
+          {/* コイン表示 */}
           <div className="flex items-center gap-1 px-3 py-1.5 bg-orange-50 rounded-full text-accent font-bold">
             <Coins className="w-4 h-4" />
-            <span>{coins}C</span>
+            <span>{coins.toLocaleString()}C</span>
           </div>
+          {/* ユーザー名またはログインボタン */}
+          {authUser ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-700 hidden sm:inline font-semibold">
+                {authUser.username}
+              </span>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-700 text-sm"
+                title="ログアウト"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowAuth(true)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-accent hover:bg-orange-600 rounded-full text-white text-sm font-semibold"
+            >
+              <LogIn className="w-4 h-4" />
+              <span className="hidden sm:inline">ログイン</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={handleReset}
             className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-full text-slate-700 text-sm"
           >
             <RotateCcw className="w-4 h-4" />
-            リセット
+            <span className="hidden sm:inline">リセット</span>
           </button>
         </div>
       </div>
@@ -699,6 +1109,16 @@ export default function Page() {
           </div>
         )}
       </main>
+
+      {/* 認証モーダル */}
+      {showAuth && (
+        <AuthModal onClose={() => setShowAuth(false)} onAuth={handleAuth} />
+      )}
+
+      {/* ランキングモーダル */}
+      {showRanking && (
+        <RankingModal onClose={() => setShowRanking(false)} authUser={authUser} />
+      )}
     </div>
   );
 }
