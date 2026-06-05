@@ -122,16 +122,16 @@ const COURSE_LABELS = {
 };
 
 function formatDistanceFit(distanceFit) {
-  switch (distanceFit) {
-    case 'short':      return '1000〜1600m';
-    case 'mile':       return '1600〜2400m';
-    case 'long':       return '2400〜3200m';
-    case 'short-mile': return '1000〜2400m';
-    case 'mile-long':  return '1600〜3200m';
-    case 'short-long': return '1000〜3200m';
-    case 'all':        return '全距離対応';
-    default:           return distanceFit;
-  }
+  const map = {
+    'short':      '1000〜1600m',
+    'mile':       '1600〜2400m',
+    'long':       '2400〜3200m',
+    'short-mile': '1000〜2400m',
+    'mile-long':  '1600〜3200m',
+    'short-long': '1000〜3200m',
+    'all':        '全距離対応',
+  };
+  return map[distanceFit] ?? distanceFit;
 }
 
 // 馬カード（ベットフェーズ）

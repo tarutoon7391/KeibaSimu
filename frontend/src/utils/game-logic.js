@@ -9,15 +9,15 @@
 
 // ---------- 定数 ----------
 
-// 脚質テーブル（フェーズ倍率の合計が 3.10 になる）
+// 脚質テーブル（時間ベースのフェーズ倍率）
 export const RUNNING_STYLES = {
-  大逃げ: { early: 1.65, middle: 1.0, late: 0.45, description: '序盤から全力。終盤でバテる' },
-  逃げ: { early: 1.4, middle: 0.95, late: 0.75, description: '先頭を走りながらスタミナ温存' },
-  先行: { early: 1.15, middle: 1.05, late: 0.9, description: '先団に位置し粘り強く走る' },
-  差し: { early: 0.8, middle: 1.0, late: 1.3, description: '中団で足をため終盤に加速' },
-  追込: { early: 0.65, middle: 0.85, late: 1.6, description: '後方から最後に一気に追い込む' },
-  直線一気: { early: 0.55, middle: 0.75, late: 1.8, description: '最後方から直線で全力追い込み' },
-  まくり: { early: 0.7, middle: 1.6, late: 0.8, description: '中盤から大外を豪快にまくる' },
+  大逃げ:   { early: 1.45, middle: 1.22, late: 0.43, description: '序盤から全力。終盤でバテる' },
+  逃げ:     { early: 1.12, middle: 1.00, late: 0.98, description: '先頭を走りながらスタミナ温存' },
+  先行:     { early: 1.00, middle: 1.02, late: 1.08, description: '先団に位置し粘り強く走る' },
+  差し:     { early: 1.05, middle: 1.06, late: 0.99, description: '中団で足をため終盤に加速' },
+  追込:     { early: 0.53, middle: 0.75, late: 1.82, description: '後方待機から直線で追い込む' },
+  直線一気: { early: 0.37, middle: 0.60, late: 2.13, description: '直線のみで勝負する大博打' },
+  まくり:   { early: 0.65, middle: 1.72, late: 0.73, description: '3コーナーから一気に進出' },
 };
 export const RUNNING_STYLE_NAMES = Object.keys(RUNNING_STYLES);
 
@@ -161,16 +161,16 @@ function convertGrade(grade) {
 
 // distanceFit 文字列から適性レンジ（min/max）を返す
 function getDistanceRange(distanceFit) {
-  switch (distanceFit) {
-    case 'short':      return { min: 1000, max: 1600 };
-    case 'mile':       return { min: 1600, max: 2400 };
-    case 'long':       return { min: 2400, max: 3200 };
-    case 'short-mile': return { min: 1000, max: 2400 };
-    case 'mile-long':  return { min: 1600, max: 3200 };
-    case 'short-long': return { min: 1000, max: 3200 };
-    case 'all':        return { min: 1000, max: 3200 };
-    default:           return { min: 1000, max: 3200 };
-  }
+  const map = {
+    'short':      { min: 1000, max: 1600 },
+    'mile':       { min: 1600, max: 2400 },
+    'long':       { min: 2400, max: 3200 },
+    'short-mile': { min: 1000, max: 2400 },
+    'mile-long':  { min: 1600, max: 3200 },
+    'short-long': { min: 1000, max: 3200 },
+    'all':        { min: 1000, max: 3200 },
+  };
+  return map[distanceFit] ?? { min: 1000, max: 3200 };
 }
 
 // ---------- 乱数ユーティリティ ----------
@@ -317,10 +317,11 @@ export function applyConditionToStats(horse, actualCondition, raceConfig = null)
   };
 }
 
-// 各馬の位置からフェーズを判定（0〜33% 序盤 / 33〜66% 中盤 / 66〜100% 終盤）
-export function positionPhase(positionPercent) {
-  if (positionPercent < 100 / 3) return 'early';
-  if (positionPercent < (100 * 2) / 3) return 'middle';
+// ステップインデックスからフェーズを判定（時間ベース）
+export function stepPhase(stepIndex) {
+  const ratio = stepIndex / RACE_STEPS;
+  if (ratio < 1 / 3) return 'early';
+  if (ratio < 2 / 3) return 'middle';
   return 'late';
 }
 
@@ -413,8 +414,18 @@ export function stepRace(state, stepIndex) {
   const pace = globalPace(ratio);
   return state.map((h) => {
     if (h.finished) return h;
-    const phase = positionPhase(h.position);
-    const styleMult = RUNNING_STYLES[h.runningStyle][phase];
+    const phase = stepPhase(stepIndex);
+    let styleMult = RUNNING_STYLES[h.runningStyle][phase];
+    // まくりの特殊処理：ratio ベースで styleMult を上書き
+    if (h.runningStyle === 'まくり') {
+      if (ratio >= 0.33 && ratio <= 0.62) {
+        styleMult = 1.90;
+      } else if (ratio < 0.33) {
+        styleMult = 0.65;
+      } else {
+        styleMult = 0.75;
+      }
+    }
     const realScore = h.speedReal * 0.5 + h.staminaReal * 0.3 + h.stabilityReal * 0.2;
     const condMult = conditionMultiplier(h.actualCondition);
     // burstMult：終盤（late）のみ有効、序盤・中盤は 1.0
