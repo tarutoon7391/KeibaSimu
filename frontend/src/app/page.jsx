@@ -117,6 +117,14 @@ const COURSE_LABELS = {
   long: '長距離',
 };
 
+function formatDistanceFit(distanceFit) {
+  if (distanceFit === 'all') return '短距離〜中距離〜長距離';
+  return distanceFit
+    .split('-')
+    .map((fit) => COURSE_LABELS[fit] ?? fit)
+    .join('〜');
+}
+
 // 馬カード（ベットフェーズ）
 // selectionIndex: null=未選択, 0/1/2=選択順（0始まり）
 // betType: 現在の賭け方（馬単/3連単のとき金銀銅バッジを表示）
@@ -166,7 +174,7 @@ function HorseCard({ horse, selectionIndex, betType, onSelect }) {
           {badge.label}
         </span>
         <span className="text-xs bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">
-          距離：{horse.distanceMin}〜{horse.distanceMax}m
+          距離：{formatDistanceFit(horse.distanceFit)}
         </span>
       </div>
       <div className="flex flex-col gap-1 mt-1">
@@ -915,7 +923,7 @@ export default function Page() {
     if (phase !== 'racing') return;
     if (stepIndex === 0) return; // 初期化フレームはスキップ
     setRaceState((prev) => {
-      const next = stepRace(prev, stepIndex, raceConfig);
+      const next = stepRace(prev, stepIndex);
       if (isRaceFinished(next, stepIndex)) {
         const ranked = rankHorses(next);
         setRanking(ranked);
@@ -949,7 +957,7 @@ export default function Page() {
       }
       return next;
     });
-  }, [stepIndex, phase, lastBet, authUser, raceConfig]);
+  }, [stepIndex, phase, lastBet, authUser]);
 
   // 選択中の馬の表示文字列
   const selectionLabel = useMemo(() => {
