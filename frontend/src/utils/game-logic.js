@@ -15,9 +15,9 @@ export const RUNNING_STYLES = {
   逃げ:     { early: 1.12, middle: 1.00, late: 0.98, description: '先頭を走りながらスタミナ温存' },
   先行:     { early: 1.00, middle: 1.02, late: 1.08, description: '先団に位置し粘り強く走る' },
   差し:     { early: 1.05, middle: 1.06, late: 0.99, description: '中団で足をため終盤に加速' },
-  追込:     { early: 0.53, middle: 0.75, late: 1.82, description: '後方待機から直線で追い込む' },
-  直線一気: { early: 0.37, middle: 0.60, late: 2.13, description: '直線のみで勝負する大博打' },
-  まくり:   { early: 0.65, middle: 1.72, late: 0.73, description: '3コーナーから一気に進出' },
+  追込:     { early: 0.70, middle: 0.80, late: 1.60, description: '後方待機から直線で追い込む' },
+  直線一気: { early: 0.60, middle: 0.65, late: 1.85, description: '直線のみで勝負する大博打' },
+  まくり:   { early: 0.75, middle: 1.62, late: 0.73, description: '3コーナーから一気に進出' },
 };
 export const RUNNING_STYLE_NAMES = Object.keys(RUNNING_STYLES);
 
