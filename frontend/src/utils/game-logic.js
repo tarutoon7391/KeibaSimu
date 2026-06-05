@@ -12,11 +12,11 @@
 // 脚質テーブル（時間ベースのフェーズ倍率）
 export const RUNNING_STYLES = {
   大逃げ:   { early: 1.45, middle: 1.22, late: 0.43, description: '序盤から全力。終盤でバテる' },
-  逃げ:     { early: 1.12, middle: 1.00, late: 0.98, description: '先頭を走りながらスタミナ温存' },
-  先行:     { early: 1.00, middle: 1.02, late: 1.08, description: '先団に位置し粘り強く走る' },
-  差し:     { early: 1.05, middle: 1.06, late: 0.99, description: '中団で足をため終盤に加速' },
-  追込:     { early: 0.70, middle: 0.80, late: 1.60, description: '後方待機から直線で追い込む' },
-  直線一気: { early: 0.60, middle: 0.65, late: 1.85, description: '直線のみで勝負する大博打' },
+  逃げ:     { early: 1.00, middle: 1.00, late: 1.10, description: '先頭を走りながらスタミナ温存' },
+  先行:     { early: 0.92, middle: 1.02, late: 1.16, description: '先団に位置し粘り強く走る' },
+  差し:     { early: 0.90, middle: 1.06, late: 1.14, description: '中団で足をため終盤に加速' },
+  追込:     { early: 0.78, middle: 0.82, late: 1.50, description: '後方待機から直線で追い込む' },
+  直線一気: { early: 0.70, middle: 0.68, late: 1.72, description: '直線のみで勝負する大博打' },
   まくり:   { early: 0.75, middle: 1.62, late: 0.73, description: '3コーナーから一気に進出' },
 };
 export const RUNNING_STYLE_NAMES = Object.keys(RUNNING_STYLES);
