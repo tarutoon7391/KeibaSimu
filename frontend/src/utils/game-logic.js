@@ -336,6 +336,65 @@ export function initRaceState(horsesWithOdds, raceConfig = null) {
   });
 }
 
+// ---------- デバッグレース用ユーティリティ ----------
+
+// デバッグレースで使う距離リスト（ボタンを押すたびに順番に変わる）
+export const DEBUG_RACE_DISTANCES = [1200, 1600, 2000, 2400, 3200];
+
+// デバッグ用レース設定（インデックスで距離を循環）
+export function generateDebugRaceConfig(index) {
+  const distance = DEBUG_RACE_DISTANCES[index % DEBUG_RACE_DISTANCES.length];
+  let courseType;
+  if (distance <= 1400) courseType = 'short';
+  else if (distance <= 1800) courseType = 'mile';
+  else courseType = 'long';
+  return { courseType, trackType: 'turf', distance };
+}
+
+// 全脚質を1頭ずつ用意したデバッグ用馬リスト（ステータス全て SSS、調子最大）
+export function generateDebugHorses() {
+  const maxStat = STATUS_TABLE['SSS']; // 97
+  return RUNNING_STYLE_NAMES.map((style, i) => ({
+    id: i + 1,
+    name: `【${style}】`,
+    speed: maxStat,
+    stamina: maxStat,
+    stability: maxStat,
+    burst: maxStat,
+    turfFit: maxStat,
+    dirtFit: maxStat,
+    speedGrade: 'SSS',
+    staminaGrade: 'SSS',
+    stabilityGrade: 'SSS',
+    burstGrade: 'SSS',
+    turfFitGrade: 'SSS',
+    dirtFitGrade: 'SSS',
+    distanceFit: 'all',
+    runningStyle: style,
+    trueCondition: 1.0,
+    displayCondition: 1.0,
+    winProb: 1 / RUNNING_STYLE_NAMES.length,
+    odds: 1.1,
+  }));
+}
+
+// デバッグ用レース状態の初期化（actualCondition を 1.0 に固定）
+export function initDebugRaceState(horses, raceConfig = null) {
+  const config = raceConfig ?? generateDebugRaceConfig(0);
+  return horses.map((h) => {
+    const actualCondition = 1.0;
+    const stats = applyConditionToStats(h, actualCondition, config);
+    return {
+      ...h,
+      actualCondition,
+      ...stats,
+      position: 0,
+      finished: false,
+      finishStep: null,
+    };
+  });
+}
+
 // 1 ステップ進める。状態（配列）を直接 mutate せず、新しい配列を返す。
 export function stepRace(state, stepIndex) {
   const ratio = stepIndex / RACE_STEPS;

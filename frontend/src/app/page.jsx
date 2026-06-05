@@ -16,11 +16,15 @@ import {
   MIN_BET,
   HORSE_COUNT,
   BET_TYPES,
+  DEBUG_RACE_DISTANCES,
   generateHorses,
   generateRaceConfig,
+  generateDebugHorses,
+  generateDebugRaceConfig,
   calculateOdds,
   calculateBetOdds,
   initRaceState,
+  initDebugRaceState,
   stepRace,
   isRaceFinished,
   rankHorses,
@@ -770,6 +774,10 @@ export default function Page() {
   const [showAuth, setShowAuth] = useState(false);
   const [showRanking, setShowRanking] = useState(false);
 
+  // デバッグレース
+  const [debugDistanceIndex, setDebugDistanceIndex] = useState(0);
+  const [isDebugRace, setIsDebugRace] = useState(false);
+
   // JWT自動ログイン（初期化）
   useEffect(() => {
     const token = getToken();
@@ -878,6 +886,7 @@ export default function Page() {
     setStepIndex(0);
     setRanking([]);
     setLastPayout(0);
+    setIsDebugRace(false);
     setPhase('betting');
   }, []);
 
@@ -890,6 +899,23 @@ export default function Page() {
     }
     prepareNewRace();
   }, [prepareNewRace, authUser]);
+
+  // デバッグレース開始（全脚質・同一ステータス・最高調子で脚質の動きを確認）
+  const handleDebugRace = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    const config = generateDebugRaceConfig(debugDistanceIndex);
+    setDebugDistanceIndex((i) => (i + 1) % DEBUG_RACE_DISTANCES.length);
+    const debugHorses = generateDebugHorses();
+    setRaceConfig(config);
+    setHorses(debugHorses);
+    setLastBet({ horseIds: [], betType: '単勝', amount: 0, odds: 0 });
+    setRaceState(initDebugRaceState(debugHorses, config));
+    setStepIndex(0);
+    setRanking([]);
+    setLastPayout(0);
+    setIsDebugRace(true);
+    setPhase('racing');
+  }, [debugDistanceIndex]);
 
   // レース開始
   const handleStartRace = useCallback(() => {
@@ -927,9 +953,9 @@ export default function Page() {
       if (isRaceFinished(next, stepIndex)) {
         const ranked = rankHorses(next);
         setRanking(ranked);
-        // 払戻判定
+        // 払戻判定（デバッグレースはコイン増減・API記録をスキップ）
         let payout = 0;
-        if (isWinningBetType(ranked, lastBet.betType, lastBet.horseIds)) {
+        if (!isDebugRace && isWinningBetType(ranked, lastBet.betType, lastBet.horseIds)) {
           payout = calcPayout(lastBet.amount, lastBet.odds);
           setLastPayout(payout);
           setCoins((c) => {
@@ -941,7 +967,7 @@ export default function Page() {
             }
             return newCoins;
           });
-        } else {
+        } else if (!isDebugRace) {
           setLastPayout(0);
           // 外れの場合もコイン同期・記録（payout=0）
           setCoins((c) => {
@@ -957,7 +983,7 @@ export default function Page() {
       }
       return next;
     });
-  }, [stepIndex, phase, lastBet, authUser]);
+  }, [stepIndex, phase, lastBet, authUser, isDebugRace]);
 
   // 選択中の馬の表示文字列
   const selectionLabel = useMemo(() => {
@@ -978,6 +1004,17 @@ export default function Page() {
           KeibaSimu
         </h1>
         <div className="flex items-center gap-2">
+          {/* 脚質デバッグボタン */}
+          <button
+            type="button"
+            onClick={handleDebugRace}
+            disabled={phase === 'racing'}
+            className="flex items-center gap-1 px-3 py-1.5 bg-purple-100 hover:bg-purple-200 disabled:bg-slate-100 disabled:text-slate-400 rounded-full text-purple-700 text-sm font-semibold"
+            title={`脚質デバッグレース（${DEBUG_RACE_DISTANCES[debugDistanceIndex]}m）`}
+          >
+            <span>🐛</span>
+            <span className="hidden sm:inline text-xs">{DEBUG_RACE_DISTANCES[debugDistanceIndex]}m</span>
+          </button>
           {/* ランキングボタン */}
           <button
             type="button"
@@ -1208,7 +1245,12 @@ export default function Page() {
             {/* レース情報 */}
             <RaceInfoBanner raceConfig={raceConfig} />
             <div className="bg-white rounded-2xl shadow-sm p-6 text-center">
-              {lastPayout > 0 ? (
+              {isDebugRace ? (
+                <>
+                  <p className="text-2xl font-bold text-purple-700">🐛 デバッグレース完了</p>
+                  <p className="mt-2 text-slate-500">全脚質の動きを確認しました</p>
+                </>
+              ) : lastPayout > 0 ? (
                 <p className="text-2xl font-bold text-accent">
                   🎉 的中！ +{lastPayout}C
                 </p>
