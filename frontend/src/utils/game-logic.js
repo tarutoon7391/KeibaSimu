@@ -414,17 +414,7 @@ export function stepRace(state, stepIndex) {
   return state.map((h) => {
     if (h.finished) return h;
     const phase = positionPhase(h.position);
-    let styleMult = RUNNING_STYLES[h.runningStyle][phase];
-    // まくりのみ ratio ベースで styleMult を上書き
-    if (h.runningStyle === 'まくり') {
-      if (ratio >= 0.33 && ratio <= 0.62) {
-        styleMult = 1.90;
-      } else if (ratio < 0.33) {
-        styleMult = 0.65;
-      } else {
-        styleMult = 0.75;
-      }
-    }
+    const styleMult = RUNNING_STYLES[h.runningStyle][phase];
     const realScore = h.speedReal * 0.5 + h.staminaReal * 0.3 + h.stabilityReal * 0.2;
     const condMult = conditionMultiplier(h.actualCondition);
     // burstMult：終盤（late）のみ有効、序盤・中盤は 1.0
