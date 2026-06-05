@@ -416,7 +416,7 @@ export function stepRace(state, stepIndex) {
     if (h.finished) return h;
     const phase = stepPhase(stepIndex);
     let styleMult = RUNNING_STYLES[h.runningStyle][phase];
-    // まくりの特殊処理：ratio ベースで styleMult を上書き
+    // まくりのみ ratio ベースで styleMult を上書き
     if (h.runningStyle === 'まくり') {
       if (ratio >= 0.33 && ratio <= 0.62) {
         styleMult = 1.90;
