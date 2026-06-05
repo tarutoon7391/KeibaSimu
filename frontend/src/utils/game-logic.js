@@ -338,22 +338,13 @@ export function initRaceState(horsesWithOdds, raceConfig = null) {
   const state = horsesWithOdds.map((h) => {
     const actualCondition = rollActualCondition(h.trueCondition);
     const stats = applyConditionToStats(h, actualCondition);
-    const statsRandom = {
-      speed: 0.8 + Math.random() * 0.4,
-      stamina: 0.8 + Math.random() * 0.4,
-      stability: 0.8 + Math.random() * 0.4,
-      burst: 0.8 + Math.random() * 0.4,
-    };
-    const maxStamina = stats.staminaReal * statsRandom.stamina * 3.0 * distStaminaMult;
+    const maxStamina = stats.staminaReal * 3.0 * distStaminaMult;
     return {
       ...h,
       actualCondition,
       ...stats,
-      statsRandom,
       maxStamina,
       currentStamina: maxStamina,
-      staminaEmpty: false,
-      staminaPenalty: 1.0,
       position: 0, // 0〜100
       finished: false,
       finishStep: null,
@@ -387,26 +378,17 @@ export function stepRace(state, stepIndex, raceConfig) {
     // スタミナ消費量
     const staminaCost = baseConsume * consumeRate * distanceConsumeMult;
 
-    let { staminaEmpty, staminaPenalty } = h;
-    const newStamina = Math.max(0, h.currentStamina - staminaCost);
-    if (newStamina <= 0 && !staminaEmpty) {
-      staminaEmpty = true;
-    }
-    if (staminaEmpty) {
-      staminaPenalty = Math.max(0.3, staminaPenalty - 0.02);
-      if (staminaPenalty <= 0.3) {
-        staminaEmpty = false;
-      }
-    }
-
     // スタミナ消費率 → スピードに変換
-    const speedBoost = 1.0 + consumeRate * 0.6;
+    const speedBoost = 1.0 + consumeRate * 0.35;
 
     // 残スタミナによる失速
-    const staminaMult = staminaPenalty;
+    const staminaRatio = h.currentStamina / h.maxStamina;
+    const staminaMult = staminaRatio > 0.2
+      ? 1.0
+      : 0.3 + staminaRatio * 3.5;
 
     // 瞬発力（Burst）→ 加速係数
-    const accelSteps = 30 - (h.burstReal * h.statsRandom.burst - 70) / 27 * 20;
+    const accelSteps = 30 - (h.burstReal - 70) / 27 * 20;
     const burstMult = stepIndex < accelSteps
       ? 0.5 + (stepIndex / accelSteps) * 0.5
       : 1.0;
@@ -424,13 +406,11 @@ export function stepRace(state, stepIndex, raceConfig) {
     const random = 1 + (Math.random() * 2 - 1) * noiseRange;
 
     // 最終advance
-    const sr = h.statsRandom;
-    const realScore = (h.speedReal * sr.speed) * 0.4
-      + (h.staminaReal * sr.stamina) * 0.35
-      + (h.stabilityReal * sr.stability) * 0.25;
-    const advance = (realScore / 83) * speedBoost * staminaMult * burstMult * trackMult * distanceMult * random;
+    const realScore = h.speedReal * 0.5 + h.staminaReal * 0.3 + h.stabilityReal * 0.2;
+    const advance = (realScore / 68) * speedBoost * staminaMult * burstMult * trackMult * distanceMult * random;
 
     let newPos = h.position + advance;
+    const newStamina = Math.max(0, h.currentStamina - staminaCost);
     let finished = h.finished;
     let finishStep = h.finishStep;
     if (newPos >= 100) {
@@ -438,15 +418,7 @@ export function stepRace(state, stepIndex, raceConfig) {
       finished = true;
       finishStep = stepIndex;
     }
-    return {
-      ...h,
-      position: newPos,
-      finished,
-      finishStep,
-      currentStamina: newStamina,
-      staminaEmpty,
-      staminaPenalty,
-    };
+    return { ...h, position: newPos, finished, finishStep, currentStamina: newStamina };
   });
   nextState.isLatePhase = isLatePhase;
   return nextState;
