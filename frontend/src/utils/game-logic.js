@@ -5,19 +5,19 @@
 //   - trueCondition（非表示）と displayCondition（表示）で「調子」を二重構造化。
 //   - 脚質は 7 種類。各脚質ごとに序盤/中盤/終盤のスタミナ消費率を持つ。
 //   - スタミナ→体力（HP）制：maxStamina = staminaReal × 3.0 × distanceStaminaMult
-//   - レースは 200 ステップ、180ms 間隔。終盤のみ先頭到達をトリガーに全馬共通フェーズへ移行。
+//   - レースは 200 ステップ、180ms 間隔。各馬の現在位置で位置フェーズを判定する。
 
 // ---------- 定数 ----------
 
 // 脚質テーブル（各フェーズのスタミナ消費率。消費率が高いほどその分スピードも出る）
 export const RUNNING_STYLES = {
-  大逃げ:   { early: 1.0, mid: 1.0, late: 1.0, description: '序盤から終盤まで全力消費' },
-  逃げ:     { early: 0.8, mid: 0.8, late: 1.0, description: '先頭を維持しつつ終盤で押し切る' },
-  先行:     { early: 0.7, mid: 0.7, late: 1.0, description: '先団待機から終盤で伸びる' },
-  差し:     { early: 0.6, mid: 0.6, late: 1.0, description: '中団でためて終盤で追い上げる' },
-  追込:     { early: 0.5, mid: 0.5, late: 1.0, description: '後方待機から終盤で一気に詰める' },
-  直線一気: { early: 0.4, mid: 0.4, late: 1.0, description: '終盤突入まで徹底温存する' },
-  まくり:   { early: 0.6, mid: 1.0, late: 1.0, description: '中盤から動き終盤まで押し上げる' },
+  大逃げ:   { early: 3.0, mid: 1.5, late: 0.8, description: '序盤から全力。終盤でバテる' },
+  逃げ:     { early: 2.0, mid: 1.3, late: 0.9, description: '先頭を走りながらスタミナ温存' },
+  先行:     { early: 1.5, mid: 1.2, late: 1.0, description: '先団に位置し粘り強く走る' },
+  差し:     { early: 0.8, mid: 1.0, late: 1.8, description: '中団で足をため終盤に加速' },
+  追込:     { early: 0.5, mid: 0.8, late: 2.5, description: '後方から最後に一気に追い込む' },
+  直線一気: { early: 0.3, mid: 0.5, late: 3.5, description: '最後方から直線で全力追い込み' },
+  まくり:   { early: 0.8, mid: 2.5, late: 1.0, description: '中盤から大外を豪快にまくる' },
 };
 export const RUNNING_STYLE_NAMES = Object.keys(RUNNING_STYLES);
 
@@ -335,7 +335,7 @@ export function getDistanceStaminaMult(distance) {
 export function initRaceState(horsesWithOdds, raceConfig = null) {
   const config = raceConfig ?? generateRaceConfig();
   const distStaminaMult = getDistanceStaminaMult(config.distance);
-  const state = horsesWithOdds.map((h) => {
+  return horsesWithOdds.map((h) => {
     const actualCondition = rollActualCondition(h.trueCondition);
     const stats = applyConditionToStats(h, actualCondition);
     const maxStamina = stats.staminaReal * 3.0 * distStaminaMult;
@@ -350,8 +350,6 @@ export function initRaceState(horsesWithOdds, raceConfig = null) {
       finishStep: null,
     };
   });
-  state.isLatePhase = false;
-  return state;
 }
 
 // 1 ステップ進める。状態（配列）を直接 mutate せず、新しい配列を返す。
@@ -361,16 +359,12 @@ export function stepRace(state, stepIndex, raceConfig) {
   const trackType = raceConfig.trackType;
   const baseConsume = 0.8;
   const distanceConsumeMult = 0.8 + (raceDistance - 1000) / 2200 * 0.5;
-  let isLatePhase = Boolean(state.isLatePhase);
-  if (!isLatePhase && state.some((h) => h.position >= 66)) {
-    isLatePhase = true;
-  }
 
-  const nextState = state.map((h) => {
+  return state.map((h) => {
     if (h.finished) return h;
 
-    // フェーズ判定（終盤のみ全馬共通）
-    const phase = isLatePhase ? 'late' : (h.position < 33 ? 'early' : 'mid');
+    // フェーズ判定（各馬の現在位置で個別判定）
+    const phase = positionPhase(h.position);
 
     // 脚質消費率
     const consumeRate = RUNNING_STYLES[h.runningStyle][phase];
@@ -379,7 +373,7 @@ export function stepRace(state, stepIndex, raceConfig) {
     const staminaCost = baseConsume * consumeRate * distanceConsumeMult;
 
     // スタミナ消費率 → スピードに変換
-    const speedBoost = 1.0 + consumeRate * 0.35;
+    const speedBoost = 1.0 + consumeRate * 0.15;
 
     // 残スタミナによる失速
     const staminaRatio = h.currentStamina / h.maxStamina;
@@ -420,8 +414,6 @@ export function stepRace(state, stepIndex, raceConfig) {
     }
     return { ...h, position: newPos, finished, finishStep, currentStamina: newStamina };
   });
-  nextState.isLatePhase = isLatePhase;
-  return nextState;
 }
 
 // 終了判定（全馬完走 or ステップ上限）
