@@ -24,6 +24,7 @@ export const RUNNING_STYLE_NAMES = Object.keys(RUNNING_STYLES);
 // レース定数
 export const RACE_STEPS = 200; // 総ステップ数
 export const STEP_INTERVAL_MS = 180; // ステップ間隔
+export const ADVANCE_SCALE = 0.36;
 
 // ゲーム設定
 export const HORSE_COUNT = 8;
@@ -434,7 +435,7 @@ export function stepRace(state, stepIndex) {
     // stability 実値が低いほど乱数幅が大きい
     const noiseRange = clamp(1.2 - h.stabilityReal / 120, 0.15, 0.7);
     const random = 1 + (Math.random() * 2 - 1) * noiseRange;
-    const advance = (realScore / 68) * styleMult * pace * condMult * burstMult * random;
+    const advance = (realScore / 68) * styleMult * pace * condMult * burstMult * random * ADVANCE_SCALE;
     let newPos = h.position + advance;
     let finished = h.finished;
     let finishStep = h.finishStep;
