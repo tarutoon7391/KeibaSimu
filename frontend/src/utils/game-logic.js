@@ -1,23 +1,23 @@
 // 競馬予想ゲームのコアロジック
 // UI 層に依存しない純粋関数として実装する
 // 仕様の要約：
-//   - 馬は 8 頭。speed/stamina/stability/burst は STATUS_TABLE に基づくランダム値。
+//   - 馬は 8 頭。speed/stamina/stability は 50〜90 のランダム値。
 //   - trueCondition（非表示）と displayCondition（表示）で「調子」を二重構造化。
-//   - 脚質は 7 種類。各脚質ごとに序盤/中盤/終盤のスタミナ消費率を持つ。
-//   - スタミナ→体力（HP）制：maxStamina = staminaReal × 3.0 × distanceStaminaMult
-//   - レースは 200 ステップ、180ms 間隔。終盤のみ先頭到達をトリガーに全馬共通フェーズへ移行。
+//   - 脚質は 7 種類。各脚質ごとに序盤/中盤/終盤の倍率を持つ。
+//   - レースは 145 ステップ、120ms 間隔。各馬の現在位置で位置フェーズを判定する。
+//   - グローバルペース：序盤×0.8 / 中盤×1.0 / 終盤×1.2。
 
 // ---------- 定数 ----------
 
-// 脚質テーブル（各フェーズのスタミナ消費率。消費率が高いほどその分スピードも出る）
+// 脚質テーブル（フェーズ倍率の合計が 3.10 になる）
 export const RUNNING_STYLES = {
-  大逃げ:   { early: 1.0, mid: 1.0, late: 1.0, description: '序盤から終盤まで全力消費' },
-  逃げ:     { early: 0.8, mid: 0.8, late: 1.0, description: '先頭を維持しつつ終盤で押し切る' },
-  先行:     { early: 0.7, mid: 0.7, late: 1.0, description: '先団待機から終盤で伸びる' },
-  差し:     { early: 0.6, mid: 0.6, late: 1.0, description: '中団でためて終盤で追い上げる' },
-  追込:     { early: 0.5, mid: 0.5, late: 1.0, description: '後方待機から終盤で一気に詰める' },
-  直線一気: { early: 0.4, mid: 0.4, late: 1.0, description: '終盤突入まで徹底温存する' },
-  まくり:   { early: 0.6, mid: 1.0, late: 1.0, description: '中盤から動き終盤まで押し上げる' },
+  大逃げ: { early: 1.65, middle: 1.0, late: 0.45, description: '序盤から全力。終盤でバテる' },
+  逃げ: { early: 1.4, middle: 0.95, late: 0.75, description: '先頭を走りながらスタミナ温存' },
+  先行: { early: 1.15, middle: 1.05, late: 0.9, description: '先団に位置し粘り強く走る' },
+  差し: { early: 0.8, middle: 1.0, late: 1.3, description: '中団で足をため終盤に加速' },
+  追込: { early: 0.65, middle: 0.85, late: 1.6, description: '後方から最後に一気に追い込む' },
+  直線一気: { early: 0.55, middle: 0.75, late: 1.8, description: '最後方から直線で全力追い込み' },
+  まくり: { early: 0.7, middle: 1.6, late: 0.8, description: '中盤から大外を豪快にまくる' },
 };
 export const RUNNING_STYLE_NAMES = Object.keys(RUNNING_STYLES);
 
@@ -182,7 +182,6 @@ export function selectHorsesFromPool(count = HORSE_COUNT) {
   return shuffled.slice(0, count).map((raw, i) => {
     const trueCondition = Math.random();
     const displayCondition = clamp(trueCondition + gaussianNoise(0, 0.2), 0, 1);
-    const distRange = DISTANCE_FIT_MAP[raw.distanceFit] ?? { distanceMin: 1000, distanceMax: 3200 };
     return {
       id: i + 1,
       name: raw.name,
@@ -199,8 +198,6 @@ export function selectHorsesFromPool(count = HORSE_COUNT) {
       turfFitGrade: raw.turfFit,
       dirtFitGrade: raw.dirtFit,
       distanceFit: raw.distanceFit,
-      distanceMin: distRange.distanceMin,
-      distanceMax: distRange.distanceMax,
       runningStyle: raw.runningStyle,
       trueCondition,
       displayCondition,
@@ -208,22 +205,11 @@ export function selectHorsesFromPool(count = HORSE_COUNT) {
   });
 }
 
-// コース種別ごとの距離範囲（メートル、200m刻み）
+// コース種別ごとの距離範囲（メートル、100m刻み）
 const DISTANCE_OPTIONS = {
-  short: [1000, 1200, 1400],
-  mile:  [1400, 1600, 1800],
+  short: [1000, 1100, 1200, 1300, 1400],
+  mile:  [1600, 1700, 1800],
   long:  [2000, 2200, 2400, 2600, 2800, 3000, 3200],
-};
-
-// distanceFit 文字列 → 適性距離範囲（m）変換マップ
-const DISTANCE_FIT_MAP = {
-  'short':      { distanceMin: 1000, distanceMax: 1400 },
-  'mile':       { distanceMin: 1400, distanceMax: 1800 },
-  'long':       { distanceMin: 2000, distanceMax: 3200 },
-  'short-mile': { distanceMin: 1000, distanceMax: 1800 },
-  'mile-long':  { distanceMin: 1400, distanceMax: 3200 },
-  'short-long': { distanceMin: 1000, distanceMax: 3200 },
-  'all':        { distanceMin: 1000, distanceMax: 3200 },
 };
 
 // レース条件（コース・馬場・距離）をランダム生成する
@@ -288,148 +274,82 @@ export function conditionMultiplier(actualCondition) {
   return 0.85 + actualCondition * 0.3;
 }
 
-// 補正済みステータス値を返す（調子係数のみ適用。距離・馬場適性はステップ毎に計算）
-export function applyConditionToStats(horse, actualCondition) {
+// 補正済みステータス値を返す（距離・馬場適性を含む）
+export function applyConditionToStats(horse, actualCondition, raceConfig = null) {
   const m = conditionMultiplier(actualCondition);
+
+  let distanceMult = 1.0;
+  let trackMult = 1.0;
+  if (raceConfig) {
+    const { courseType, trackType } = raceConfig;
+    // 距離適性："all" または該当コースを含む場合×1.1、それ以外×0.9
+    if (horse.distanceFit === 'all') {
+      distanceMult = 1.1;
+    } else if (horse.distanceFit && horse.distanceFit.split('-').includes(courseType)) {
+      distanceMult = 1.1;
+    } else {
+      distanceMult = 0.9;
+    }
+    // 馬場適性：ランク値/100 を係数として使用
+    const fitValue = trackType === 'turf' ? horse.turfFit : horse.dirtFit;
+    if (fitValue != null) {
+      trackMult = fitValue / 100;
+    }
+  }
+
+  const fitMult = distanceMult * trackMult;
   return {
-    speedReal: horse.speed * m,
-    staminaReal: horse.stamina * m,
-    stabilityReal: horse.stability * m,
-    burstReal: horse.burst * m,
-    turfFitReal: horse.turfFit * m,
-    dirtFitReal: horse.dirtFit * m,
+    speedReal: horse.speed * m * fitMult,
+    staminaReal: horse.stamina * m * fitMult,
+    stabilityReal: horse.stability * m * fitMult,
   };
 }
 
 // 各馬の位置からフェーズを判定（0〜33% 序盤 / 33〜66% 中盤 / 66〜100% 終盤）
 export function positionPhase(positionPercent) {
-  if (positionPercent < 33) return 'early';
-  if (positionPercent < 66) return 'mid';
+  if (positionPercent < 100 / 3) return 'early';
+  if (positionPercent < (100 * 2) / 3) return 'middle';
   return 'late';
 }
 
-// 距離によるスタミナ補正（線形補間）
-// 制御点：1000m→0.8、1200m→0.85、1600m→1.0、2000m→1.15、2400m→1.3、3200m→1.6
-export function getDistanceStaminaMult(distance) {
-  const points = [
-    [1000, 0.8],
-    [1200, 0.85],
-    [1600, 1.0],
-    [2000, 1.15],
-    [2400, 1.3],
-    [3200, 1.6],
-  ];
-  if (distance <= points[0][0]) return points[0][1];
-  if (distance >= points[points.length - 1][0]) return points[points.length - 1][1];
-  for (let i = 0; i < points.length - 1; i++) {
-    const [x0, y0] = points[i];
-    const [x1, y1] = points[i + 1];
-    if (distance <= x1) {
-      return y0 + (y1 - y0) * (distance - x0) / (x1 - x0);
-    }
-  }
-  return 1.0;
+// グローバルペース（ステップ進行率による）
+export function globalPace(stepRatio) {
+  if (stepRatio < 1 / 3) return 0.8;
+  if (stepRatio < 2 / 3) return 1.0;
+  return 1.2;
 }
 
 // レースに参加する馬の内部状態を初期化する
 export function initRaceState(horsesWithOdds, raceConfig = null) {
   const config = raceConfig ?? generateRaceConfig();
-  const distStaminaMult = getDistanceStaminaMult(config.distance);
-  const state = horsesWithOdds.map((h) => {
+  return horsesWithOdds.map((h) => {
     const actualCondition = rollActualCondition(h.trueCondition);
-    const stats = applyConditionToStats(h, actualCondition);
-    const statsRandom = {
-      speed: 0.8 + Math.random() * 0.4,
-      stamina: 0.8 + Math.random() * 0.4,
-      stability: 0.8 + Math.random() * 0.4,
-      burst: 0.8 + Math.random() * 0.4,
-    };
-    const maxStamina = stats.staminaReal * statsRandom.stamina * 3.0 * distStaminaMult;
+    const stats = applyConditionToStats(h, actualCondition, config);
     return {
       ...h,
       actualCondition,
       ...stats,
-      statsRandom,
-      maxStamina,
-      currentStamina: maxStamina,
-      staminaEmpty: false,
-      staminaPenalty: 1.0,
       position: 0, // 0〜100
       finished: false,
       finishStep: null,
     };
   });
-  state.isLatePhase = false;
-  return state;
 }
 
 // 1 ステップ進める。状態（配列）を直接 mutate せず、新しい配列を返す。
-// raceConfig: { distance, trackType, courseType }
-export function stepRace(state, stepIndex, raceConfig) {
-  const raceDistance = raceConfig.distance;
-  const trackType = raceConfig.trackType;
-  const baseConsume = 0.8;
-  const distanceConsumeMult = 0.8 + (raceDistance - 1000) / 2200 * 0.5;
-  let isLatePhase = Boolean(state.isLatePhase);
-  if (!isLatePhase && state.some((h) => h.position >= 66)) {
-    isLatePhase = true;
-  }
-
-  const nextState = state.map((h) => {
+export function stepRace(state, stepIndex) {
+  const ratio = stepIndex / RACE_STEPS;
+  const pace = globalPace(ratio);
+  return state.map((h) => {
     if (h.finished) return h;
-
-    // フェーズ判定（終盤のみ全馬共通）
-    const phase = isLatePhase ? 'late' : (h.position < 33 ? 'early' : 'mid');
-
-    // 脚質消費率
-    const consumeRate = RUNNING_STYLES[h.runningStyle][phase];
-
-    // スタミナ消費量
-    const staminaCost = baseConsume * consumeRate * distanceConsumeMult;
-
-    let { staminaEmpty, staminaPenalty } = h;
-    const newStamina = Math.max(0, h.currentStamina - staminaCost);
-    if (newStamina <= 0 && !staminaEmpty) {
-      staminaEmpty = true;
-    }
-    if (staminaEmpty) {
-      staminaPenalty = Math.max(0.3, staminaPenalty - 0.02);
-      if (staminaPenalty <= 0.3) {
-        staminaEmpty = false;
-      }
-    }
-
-    // スタミナ消費率 → スピードに変換
-    const speedBoost = 1.0 + consumeRate * 0.6;
-
-    // 残スタミナによる失速
-    const staminaMult = staminaPenalty;
-
-    // 瞬発力（Burst）→ 加速係数
-    const accelSteps = 30 - (h.burstReal * h.statsRandom.burst - 70) / 27 * 20;
-    const burstMult = stepIndex < accelSteps
-      ? 0.5 + (stepIndex / accelSteps) * 0.5
-      : 1.0;
-
-    // 馬場適性
-    const fitReal = trackType === 'turf' ? h.turfFitReal : h.dirtFitReal;
-    const trackMult = 0.5 + (fitReal / 100) * 0.7;
-
-    // 距離適性（m管理 + 乖離デバフ）
-    const over = Math.max(0, raceDistance - h.distanceMax) + Math.max(0, h.distanceMin - raceDistance);
-    const distanceMult = Math.max(0.6, 1.0 - (over / 100) * 0.02);
-
-    // 乱数（stability由来）
+    const phase = positionPhase(h.position);
+    const styleMult = RUNNING_STYLES[h.runningStyle][phase];
+    const realScore = h.speedReal * 0.5 + h.staminaReal * 0.3 + h.stabilityReal * 0.2;
+    const condMult = conditionMultiplier(h.actualCondition);
+    // stability 実値が低いほど乱数幅が大きい
     const noiseRange = clamp(1.2 - h.stabilityReal / 120, 0.15, 0.7);
     const random = 1 + (Math.random() * 2 - 1) * noiseRange;
-
-    // 最終advance
-    const sr = h.statsRandom;
-    const realScore = (h.speedReal * sr.speed) * 0.4
-      + (h.staminaReal * sr.stamina) * 0.35
-      + (h.stabilityReal * sr.stability) * 0.25;
-    const advance = (realScore / 83) * speedBoost * staminaMult * burstMult * trackMult * distanceMult * random;
-
+    const advance = (realScore / 68) * styleMult * pace * condMult * random;
     let newPos = h.position + advance;
     let finished = h.finished;
     let finishStep = h.finishStep;
@@ -438,18 +358,8 @@ export function stepRace(state, stepIndex, raceConfig) {
       finished = true;
       finishStep = stepIndex;
     }
-    return {
-      ...h,
-      position: newPos,
-      finished,
-      finishStep,
-      currentStamina: newStamina,
-      staminaEmpty,
-      staminaPenalty,
-    };
+    return { ...h, position: newPos, finished, finishStep };
   });
-  nextState.isLatePhase = isLatePhase;
-  return nextState;
 }
 
 // 終了判定（全馬完走 or ステップ上限）
