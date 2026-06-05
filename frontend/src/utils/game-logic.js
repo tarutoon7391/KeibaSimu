@@ -157,6 +157,22 @@ function convertGrade(grade) {
   return STATUS_TABLE[grade] ?? 50;
 }
 
+// ---------- 距離適性レンジ ----------
+
+// distanceFit 文字列から適性レンジ（min/max）を返す
+function getDistanceRange(distanceFit) {
+  switch (distanceFit) {
+    case 'short':      return { min: 1000, max: 1600 };
+    case 'mile':       return { min: 1600, max: 2400 };
+    case 'long':       return { min: 2400, max: 3200 };
+    case 'short-mile': return { min: 1000, max: 2400 };
+    case 'mile-long':  return { min: 1600, max: 3200 };
+    case 'short-long': return { min: 1000, max: 3200 };
+    case 'all':        return { min: 1000, max: 3200 };
+    default:           return { min: 1000, max: 3200 };
+  }
+}
+
 // ---------- 乱数ユーティリティ ----------
 
 // 標準正規分布に従う乱数（Box-Muller）
@@ -240,7 +256,7 @@ export function conditionBadge(displayCondition) {
 
 // 各馬の強さスコア（オッズ用）。ベース値と displayCondition を使う。
 function oddsStrength(horse) {
-  const base = horse.speed * 0.5 + horse.stamina * 0.3 + horse.stability * 0.2;
+  const base = horse.speed * 0.5 + horse.stamina * 0.3 + horse.stability * 0.1 + horse.burst * 0.1;
   const conditionFactor = 0.8 + horse.displayCondition * 0.4; // 0.8〜1.2
   return base * conditionFactor;
 }
@@ -281,19 +297,15 @@ export function applyConditionToStats(horse, actualCondition, raceConfig = null)
   let distanceMult = 1.0;
   let trackMult = 1.0;
   if (raceConfig) {
-    const { courseType, trackType } = raceConfig;
-    // 距離適性："all" または該当コースを含む場合×1.1、それ以外×0.9
-    if (horse.distanceFit === 'all') {
-      distanceMult = 1.1;
-    } else if (horse.distanceFit && horse.distanceFit.split('-').includes(courseType)) {
-      distanceMult = 1.1;
-    } else {
-      distanceMult = 0.9;
-    }
-    // 馬場適性：ランク値/100 を係数として使用
+    const { trackType, distance } = raceConfig;
+    // 距離適性：レンジ乖離デバフ
+    const { min: distanceMin, max: distanceMax } = getDistanceRange(horse.distanceFit);
+    const deviation = Math.max(distanceMin - distance, distance - distanceMax, 0);
+    distanceMult = 1.0 - clamp(deviation / 2000, 0, 0.25);
+    // 馬場適性：SS(93)をニュートラル(×1.0)として上下に振る
     const fitValue = trackType === 'turf' ? horse.turfFit : horse.dirtFit;
     if (fitValue != null) {
-      trackMult = fitValue / 100;
+      trackMult = 1.0 + (fitValue - 93) / 200;
     }
   }
 
@@ -405,10 +417,13 @@ export function stepRace(state, stepIndex) {
     const styleMult = RUNNING_STYLES[h.runningStyle][phase];
     const realScore = h.speedReal * 0.5 + h.staminaReal * 0.3 + h.stabilityReal * 0.2;
     const condMult = conditionMultiplier(h.actualCondition);
+    // burstMult：終盤（late）のみ有効、序盤・中盤は 1.0
+    const burstReal = h.burst * condMult;
+    const burstMult = phase === 'late' ? 1.0 + (burstReal - 68) / 300 : 1.0;
     // stability 実値が低いほど乱数幅が大きい
     const noiseRange = clamp(1.2 - h.stabilityReal / 120, 0.15, 0.7);
     const random = 1 + (Math.random() * 2 - 1) * noiseRange;
-    const advance = (realScore / 68) * styleMult * pace * condMult * random;
+    const advance = (realScore / 68) * styleMult * pace * condMult * burstMult * random;
     let newPos = h.position + advance;
     let finished = h.finished;
     let finishStep = h.finishStep;
