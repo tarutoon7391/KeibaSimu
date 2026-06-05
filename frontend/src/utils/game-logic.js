@@ -317,11 +317,10 @@ export function applyConditionToStats(horse, actualCondition, raceConfig = null)
   };
 }
 
-// ステップインデックスからフェーズを判定（時間ベース）
-export function stepPhase(stepIndex) {
-  const ratio = stepIndex / RACE_STEPS;
-  if (ratio < 1 / 3) return 'early';
-  if (ratio < 2 / 3) return 'middle';
+// 位置（0〜100）からフェーズを判定（位置ベース）
+export function positionPhase(positionPercent) {
+  if (positionPercent < 100 / 3) return 'early';
+  if (positionPercent < (100 * 2) / 3) return 'middle';
   return 'late';
 }
 
@@ -414,7 +413,7 @@ export function stepRace(state, stepIndex) {
   const pace = globalPace(ratio);
   return state.map((h) => {
     if (h.finished) return h;
-    const phase = stepPhase(stepIndex);
+    const phase = positionPhase(h.position);
     let styleMult = RUNNING_STYLES[h.runningStyle][phase];
     // まくりのみ ratio ベースで styleMult を上書き
     if (h.runningStyle === 'まくり') {
