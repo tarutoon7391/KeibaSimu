@@ -417,6 +417,12 @@ const COURSE_LABELS = {
 };
 
 function formatDistanceFit(distanceFit) {
+  // {min, max} オブジェクトの場合は数値レンジ文字列に変換（React error #31 対策）
+  if (distanceFit && typeof distanceFit === 'object') {
+    const min = distanceFit.min ?? 1000;
+    const max = distanceFit.max ?? 3200;
+    return `${min}〜${max}m`;
+  }
   const map = {
     'short':      '1000〜1600m',
     'mile':       '1600〜2400m',
@@ -426,7 +432,7 @@ function formatDistanceFit(distanceFit) {
     'short-long': '1000〜3200m',
     'all':        '全距離対応',
   };
-  return map[distanceFit] ?? distanceFit;
+  return map[distanceFit] ?? String(distanceFit ?? '---');
 }
 
 function normalizeRaceGrade(raceGrade) {
