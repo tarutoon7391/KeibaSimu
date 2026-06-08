@@ -1057,6 +1057,30 @@ app.post('/api/rankings/record', requireAuth, async (req, res) => {
   }
 });
 
+// 馬券購入時のコイン減算
+app.post('/api/bets/deduct', authMiddleware, async (req, res) => {
+  const { amount } = req.body || {};
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return res.status(400).json({ error: 'amount は正の整数である必要があります' });
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const user = await deductCoins(client, req.userId, amount);
+    await client.query('COMMIT');
+    res.json({ remainingCoins: user.coins });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    console.error(err);
+    res.status(500).json({ error: 'コインの減算に失敗しました' });
+  } finally {
+    client.release();
+  }
+});
+
 // 馬一覧取得
 app.get('/api/horses', async (_req, res) => {
   try {

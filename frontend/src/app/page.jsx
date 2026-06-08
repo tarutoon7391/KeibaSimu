@@ -86,6 +86,13 @@ async function apiUpdateCoins(coins) {
   });
 }
 
+async function apiDeductCoins(amount) {
+  return apiFetch('/api/bets/deduct', {
+    method: 'POST',
+    body: JSON.stringify({ amount }),
+  });
+}
+
 async function apiRecordBet(bet_type, bet_amount, payout, odds) {
   return apiFetch('/api/rankings/record', {
     method: 'POST',
@@ -1667,6 +1674,18 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
                 </div>
               </div>
 
+              {/* 通算成績 */}
+              <div className="grid grid-cols-2 gap-2 text-center">
+                <div className="bg-slate-700 rounded-xl py-2">
+                  <p className="text-slate-400 text-xs">通算勝利数</p>
+                  <p className="text-white font-bold">{currentHorse.total_wins ?? 0}勝</p>
+                </div>
+                <div className="bg-slate-700 rounded-xl py-2">
+                  <p className="text-slate-400 text-xs">通算獲得賞金</p>
+                  <p className="text-white font-bold text-xs">{(currentHorse.total_prize ?? 0).toLocaleString()}コイン</p>
+                </div>
+              </div>
+
               {/* 引退・抹消ボタン */}
               <div className="flex gap-3 pt-1">
                 <button
@@ -2653,7 +2672,7 @@ export default function Page() {
   }, [debugDistanceIndex]);
 
   // レース開始
-  const handleStartRace = useCallback(() => {
+  const handleStartRace = useCallback(async () => {
     if (!canStart) return;
     if (hasPlayerHorseInRace) {
       setLastBet({ horseIds: [], betType: '単勝', amount: 0, odds: 0 });
@@ -2664,7 +2683,14 @@ export default function Page() {
       return;
     }
     const betOdds = calculateBetOdds(horses, betType, selectedHorseIds);
-    setCoins((c) => c - betAmount);
+    // コイン減算はバックエンドで行う
+    try {
+      const result = await apiDeductCoins(betAmount);
+      setCoins(result.remainingCoins);
+    } catch {
+      setError('コインの減算に失敗しました。もう一度お試しください。');
+      return;
+    }
     setLastBet({
       horseIds: selectedHorseIds,
       betType,
