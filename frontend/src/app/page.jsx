@@ -22,8 +22,6 @@ import {
   buildRaceConfigByConditions,
   generateDebugHorses,
   generateDebugRaceConfig,
-  generateRaceHorses,
-  setNPCHorseGenerator,
   calculateOdds,
   calculateBetOdds,
   initRaceState,
@@ -35,6 +33,7 @@ import {
   isWinningBetType,
   conditionBadge,
 } from '../utils/game-logic.js';
+import { generateNPCHorses } from '../utils/race-horse-pool.js';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -111,6 +110,107 @@ const RANK_LABELS = [
   'B-','B','B+','A-','A','A+','S-','S','S+',
   'SS-','SS','SS+','SSS-','SSS','SSS+','Z-','Z','Z+',
 ];
+const TRAINED_RANK_TO_STAT = [
+  70, 71, 72,
+  73, 74, 75,
+  76, 77, 78,
+  80, 81, 82,
+  84, 85, 86,
+  88, 89, 90,
+  93, 94, 95,
+  97, 98, 99,
+  100, 101, 102,
+];
+
+function clampRank(rank) {
+  const numeric = Number(rank);
+  if (!Number.isFinite(numeric)) return 0;
+  return Math.max(0, Math.min(26, Math.floor(numeric)));
+}
+
+function rankToLabel(rank) {
+  return RANK_LABELS[clampRank(rank)];
+}
+
+function rankToStat(rank) {
+  return TRAINED_RANK_TO_STAT[clampRank(rank)];
+}
+
+function createRaceHorseFromRanks({
+  id,
+  name,
+  speedRank,
+  staminaRank,
+  stabilityRank,
+  burstRank,
+  turfFitRank,
+  dirtFitRank,
+  distanceFit = 'all',
+  runningStyle = '先行',
+  isPlayerHorse = false,
+}) {
+  const trueCondition = Math.random();
+  const displayCondition = Math.max(0, Math.min(1, trueCondition + (Math.random() - 0.5) * 0.7));
+  return {
+    id,
+    name,
+    speed: rankToStat(speedRank),
+    stamina: rankToStat(staminaRank),
+    stability: rankToStat(stabilityRank),
+    burst: rankToStat(burstRank),
+    turfFit: rankToStat(turfFitRank),
+    dirtFit: rankToStat(dirtFitRank),
+    speedGrade: rankToLabel(speedRank),
+    staminaGrade: rankToLabel(staminaRank),
+    stabilityGrade: rankToLabel(stabilityRank),
+    burstGrade: rankToLabel(burstRank),
+    turfFitGrade: rankToLabel(turfFitRank),
+    dirtFitGrade: rankToLabel(dirtFitRank),
+    distanceFit,
+    runningStyle,
+    trueCondition,
+    displayCondition,
+    isPlayerHorse,
+  };
+}
+
+function generateRegisteredRaceHorses(raceGrade, raceName, trainedHorse, count = HORSE_COUNT) {
+  if (!trainedHorse) return generateHorses(count);
+  const npcCount = Math.max(0, count - 1);
+  const normalizedGrade = normalizeRaceGrade(raceGrade);
+  const npcHorses = generateNPCHorses(normalizedGrade, raceName, npcCount).map((horse, index) =>
+    createRaceHorseFromRanks({
+      id: index + 1,
+      name: horse.name,
+      speedRank: horse.speed,
+      staminaRank: horse.stamina,
+      stabilityRank: horse.stability,
+      burstRank: horse.burst,
+      turfFitRank: horse.stability,
+      dirtFitRank: horse.stability,
+      runningStyle: horse.runningStyle || '先行',
+      distanceFit: 'all',
+      isPlayerHorse: false,
+    })
+  );
+  const playerHorse = createRaceHorseFromRanks({
+    id: count,
+    name: trainedHorse.name,
+    speedRank: trainedHorse.speed_rank,
+    staminaRank: trainedHorse.stamina_rank,
+    stabilityRank: trainedHorse.stability_rank,
+    burstRank: trainedHorse.burst_rank,
+    turfFitRank: trainedHorse.turf_fit_rank,
+    dirtFitRank: trainedHorse.dirt_fit_rank,
+    runningStyle: trainedHorse.runningStyle ?? trainedHorse.running_style ?? '先行',
+    distanceFit: {
+      min: trainedHorse.distance_min ?? 1000,
+      max: trainedHorse.distance_max ?? 3200,
+    },
+    isPlayerHorse: true,
+  });
+  return [...npcHorses, playerHorse];
+}
 
 // ガチャ種別定義
 const GACHA_TYPES = [
@@ -1141,7 +1241,7 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
   }, [activeTab, currentHorse]);
 
   // ランクラベルを返すヘルパー
-  const statLabel = (val) => RANK_LABELS[Math.max(0, Math.min(26, val ?? 0))];
+  const statLabel = (val) => rankToLabel(val);
   const gachaResults = Array.isArray(gachaResult) ? gachaResult : [];
   const isMultiGacha = gachaResults.length > 1;
   const selectedHorse = selectedGachaHorse ?? gachaResults[0] ?? null;
@@ -1160,6 +1260,22 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
   };
   const isTrainingDoneThisWeek = Boolean(currentHorse?.trained_this_week);
   const isFeedDoneThisWeek = Boolean(currentHorse?.fed_this_week);
+  const trainResultMessage = (() => {
+    if (!trainResult) return '';
+    if (trainResult.isStyleChange) {
+      return `🔄 脚質を ${trainResult.beforeStyle ?? '-'} → ${trainResult.afterStyle ?? '-'} に変更しました`;
+    }
+    if (trainResult.type === 'training' && trainResult.target === 'running_style') {
+      return `🔄 脚質を ${trainResult.beforeStyle ?? '-'} → ${trainResult.afterStyle ?? '-'} に変更しました`;
+    }
+    if (trainResult.type === 'training') {
+      if (trainResult.success) {
+        return `✅ ${trainResult.statChanged ?? 'ステータス'}が ${statLabel(trainResult.before)} → ${statLabel(trainResult.after)} にアップ！`;
+      }
+      return '❌ 今回は効果がありませんでした';
+    }
+    return trainResult.message ?? '処理が完了しました';
+  })();
 
   // ガチャを引く
   const handleGacha = async (gachaType, count) => {
@@ -1467,12 +1583,12 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
               {/* ステータス一覧 */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {[
-                  ['スピード',   currentHorse.speed],
-                  ['スタミナ',   currentHorse.stamina],
-                  ['安定性',     currentHorse.stability],
-                  ['瞬発力',     currentHorse.burst],
-                  ['芝適性',     currentHorse.turfFit ?? currentHorse.turf_fit],
-                  ['ダート適性', currentHorse.dirtFit ?? currentHorse.dirt_fit],
+                  ['スピード',   currentHorse.speed_rank],
+                  ['スタミナ',   currentHorse.stamina_rank],
+                  ['安定性',     currentHorse.stability_rank],
+                  ['瞬発力',     currentHorse.burst_rank],
+                  ['芝適性',     currentHorse.turf_fit_rank],
+                  ['ダート適性', currentHorse.dirt_fit_rank],
                 ].map(([label, val]) => (
                   <div key={label} className="bg-slate-700 rounded-lg px-3 py-2 flex items-center justify-between">
                     <span className="text-slate-400 text-xs">{label}</span>
@@ -1866,12 +1982,12 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
                       {/* ステータス一覧 */}
                       <div className="grid grid-cols-3 gap-1">
                         {[
-                          ['速', horse.speed],
-                          ['ス', horse.stamina],
-                          ['安', horse.stability],
-                          ['瞬', horse.burst],
-                          ['芝', horse.turfFit ?? horse.turf_fit],
-                          ['ダ', horse.dirtFit ?? horse.dirt_fit],
+                          ['速', horse.speed_rank ?? horse.speed],
+                          ['ス', horse.stamina_rank ?? horse.stamina],
+                          ['安', horse.stability_rank ?? horse.stability],
+                          ['瞬', horse.burst_rank ?? horse.burst],
+                          ['芝', horse.turf_fit_rank ?? horse.turfFit ?? horse.turf_fit],
+                          ['ダ', horse.dirt_fit_rank ?? horse.dirtFit ?? horse.dirt_fit],
                         ].map(([lbl, val]) => (
                           <div key={lbl} className="bg-slate-700 rounded px-1 py-1 text-center">
                             <span className="text-slate-400 text-xs">{lbl} </span>
@@ -2198,24 +2314,8 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
       {trainResult && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4">
-            <h3 className="text-white font-bold text-lg">
-              {trainResult.success ? '✅ 成功！' : '❌ 失敗'}
-            </h3>
-            {trainResult.message && (
-              <p className="text-slate-300 text-sm">{trainResult.message}</p>
-            )}
-            {trainResult.changes && Object.keys(trainResult.changes).length > 0 && (
-              <div className="bg-slate-700 rounded-xl p-3 text-sm space-y-1">
-                {Object.entries(trainResult.changes).map(([k, v]) => (
-                  <p key={k} className="text-slate-200">
-                    {k}:{' '}
-                    <span className={Number(v) > 0 ? 'text-green-400' : Number(v) < 0 ? 'text-rose-400' : 'text-slate-400'}>
-                      {Number(v) > 0 ? '+' : ''}{v}
-                    </span>
-                  </p>
-                ))}
-              </div>
-            )}
+            <h3 className="text-white font-bold text-lg">調教結果</h3>
+            <p className="text-slate-200 text-sm">{trainResultMessage}</p>
             <button
               type="button"
               onClick={() => setTrainResult(null)}
@@ -2344,18 +2444,6 @@ export default function Page() {
       });
   }, []);
 
-  useEffect(() => {
-    const modulePath = '../utils/race-horse-pool.js';
-    import(/* @vite-ignore */ modulePath)
-      .then((mod) => {
-        if (typeof mod.generateNPCHorses === 'function') {
-          setNPCHorseGenerator(mod.generateNPCHorses);
-        }
-      })
-      .catch(() => {
-      });
-  }, []);
-
   // ログイン・登録成功時
   const handleAuth = useCallback((user) => {
     setAuthUser(user);
@@ -2479,7 +2567,7 @@ export default function Page() {
       ? buildRaceConfigByConditions(nextRaceDistance, nextRaceTrack)
       : generateRaceConfig();
     const raceHorses = shouldUseRegisteredRace
-      ? generateRaceHorses(
+      ? generateRegisteredRaceHorses(
         raceMeta.raceGrade,
         raceMeta.raceName,
         registeredHorse
