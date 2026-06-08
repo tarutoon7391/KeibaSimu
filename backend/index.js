@@ -719,8 +719,20 @@ function conditionMultiplier(actualCondition) {
   return 0.75 + actualCondition * 0.5;
 }
 
+function hasExplicitTrainedHorseFlag(horse) {
+  return ['is_trained_horse', 'isTrainedHorse', 'is_player_horse', 'isPlayerHorse']
+    .some((key) => Object.prototype.hasOwnProperty.call(horse, key));
+}
+
+function isTrainedHorse(horse, raceConfig) {
+  if (hasExplicitTrainedHorseFlag(horse)) {
+    return Boolean(horse.is_trained_horse ?? horse.isTrainedHorse ?? horse.is_player_horse ?? horse.isPlayerHorse);
+  }
+  return Boolean(raceConfig?.hasTrainedHorseInRace);
+}
+
 function applyConditionToStats(horse, actualCondition, raceConfig) {
-  const condition = conditionMultiplier(actualCondition);
+  const condition = isTrainedHorse(horse, raceConfig) ? 1.0 : conditionMultiplier(actualCondition);
   const { min, max } = getDistanceRange(horse);
   const deviation = Math.max(min - raceConfig.distance, raceConfig.distance - max, 0);
   const distanceMultiplier = 1.0 - clamp(deviation / 2000, 0, 0.25);
@@ -765,9 +777,13 @@ function calculateOdds(horses) {
 }
 
 function initRaceState(horses, raceConfig) {
+  const hasTrainedHorseInRace = horses.some((horse) =>
+    Boolean(horse.is_trained_horse ?? horse.isTrainedHorse ?? horse.is_player_horse ?? horse.isPlayerHorse)
+  );
+  const raceContext = { ...raceConfig, hasTrainedHorseInRace };
   return horses.map((horse) => {
     const actualCondition = rollActualCondition(horse.trueCondition);
-    const adjusted = applyConditionToStats(horse, actualCondition, raceConfig);
+    const adjusted = applyConditionToStats(horse, actualCondition, raceContext);
     return {
       ...horse,
       actualCondition,

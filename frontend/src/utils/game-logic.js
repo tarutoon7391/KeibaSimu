@@ -467,7 +467,8 @@ export function conditionMultiplier(actualCondition) {
 
 // 補正済みステータス値を返す（距離・馬場適性を含む）
 export function applyConditionToStats(horse, actualCondition, raceConfig = null) {
-  const m = conditionMultiplier(actualCondition);
+  const isTrainedHorse = Boolean(horse.isTrainedHorse ?? horse.is_trained_horse ?? horse.isPlayerHorse);
+  const m = isTrainedHorse ? 1.0 : conditionMultiplier(actualCondition);
 
   let distanceMult = 1.0;
   let trackMult = 1.0;
