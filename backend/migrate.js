@@ -57,6 +57,131 @@ const migrations = [
     odds NUMERIC(6,1) NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
   );`,
+
+  // trained_horses テーブル（育成馬）
+  `CREATE TABLE IF NOT EXISTS trained_horses (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    speed_rank SMALLINT NOT NULL DEFAULT 0,
+    stamina_rank SMALLINT NOT NULL DEFAULT 0,
+    stability_rank SMALLINT NOT NULL DEFAULT 0,
+    burst_rank SMALLINT NOT NULL DEFAULT 0,
+    turf_fit_rank SMALLINT NOT NULL DEFAULT 0,
+    dirt_fit_rank SMALLINT NOT NULL DEFAULT 0,
+    distance_min INTEGER NOT NULL DEFAULT 1000,
+    distance_max INTEGER NOT NULL DEFAULT 3200,
+    running_style TEXT NOT NULL DEFAULT '先行',
+    generation INTEGER NOT NULL DEFAULT 1,
+    parent_id INTEGER REFERENCES trained_horses(id),
+    level INTEGER NOT NULL DEFAULT 1,
+    exp INTEGER NOT NULL DEFAULT 0,
+    total_coins_invested INTEGER NOT NULL DEFAULT 0,
+    training_count INTEGER NOT NULL DEFAULT 0,
+    speed_growth INTEGER NOT NULL DEFAULT 0,
+    stamina_growth INTEGER NOT NULL DEFAULT 0,
+    stability_growth INTEGER NOT NULL DEFAULT 0,
+    burst_growth INTEGER NOT NULL DEFAULT 0,
+    turf_fit_growth INTEGER NOT NULL DEFAULT 0,
+    dirt_fit_growth INTEGER NOT NULL DEFAULT 0,
+    distance_min_growth INTEGER NOT NULL DEFAULT 0,
+    distance_max_growth INTEGER NOT NULL DEFAULT 0,
+    total_races INTEGER NOT NULL DEFAULT 0,
+    total_wins INTEGER NOT NULL DEFAULT 0,
+    total_prize INTEGER NOT NULL DEFAULT 0,
+    win_shinjuba INTEGER NOT NULL DEFAULT 0,
+    win_mishousen INTEGER NOT NULL DEFAULT 0,
+    win_1sho INTEGER NOT NULL DEFAULT 0,
+    win_2sho INTEGER NOT NULL DEFAULT 0,
+    win_3sho INTEGER NOT NULL DEFAULT 0,
+    win_listed INTEGER NOT NULL DEFAULT 0,
+    win_open INTEGER NOT NULL DEFAULT 0,
+    win_g3 INTEGER NOT NULL DEFAULT 0,
+    win_g2 INTEGER NOT NULL DEFAULT 0,
+    win_g1 INTEGER NOT NULL DEFAULT 0,
+    has_raced BOOLEAN NOT NULL DEFAULT FALSE,
+    is_retired BOOLEAN NOT NULL DEFAULT FALSE,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+    is_hall_of_fame BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );`,
+
+  // gacha_results テーブル（ガチャ履歴）
+  `CREATE TABLE IF NOT EXISTS gacha_results (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    gacha_type TEXT NOT NULL,
+    speed_rank SMALLINT NOT NULL DEFAULT 0,
+    stamina_rank SMALLINT NOT NULL DEFAULT 0,
+    stability_rank SMALLINT NOT NULL DEFAULT 0,
+    burst_rank SMALLINT NOT NULL DEFAULT 0,
+    turf_fit_rank SMALLINT NOT NULL DEFAULT 0,
+    dirt_fit_rank SMALLINT NOT NULL DEFAULT 0,
+    distance_min INTEGER NOT NULL DEFAULT 1000,
+    distance_max INTEGER NOT NULL DEFAULT 3200,
+    running_style TEXT NOT NULL DEFAULT '先行',
+    adopted BOOLEAN NOT NULL DEFAULT FALSE,
+    cost INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );`,
+
+  // training_logs テーブル（調教・飼葉ログ）
+  `CREATE TABLE IF NOT EXISTS training_logs (
+    id SERIAL PRIMARY KEY,
+    horse_id INTEGER NOT NULL REFERENCES trained_horses(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    grade TEXT NOT NULL,
+    target TEXT,
+    cost INTEGER NOT NULL,
+    success BOOLEAN NOT NULL DEFAULT FALSE,
+    stat_changed TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );`,
+
+  // horse_race_results テーブル（育成馬のレース結果）
+  `CREATE TABLE IF NOT EXISTS horse_race_results (
+    id SERIAL PRIMARY KEY,
+    horse_id INTEGER NOT NULL REFERENCES trained_horses(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    race_id INTEGER NOT NULL REFERENCES races(id) ON DELETE CASCADE,
+    race_grade TEXT NOT NULL,
+    race_name TEXT NOT NULL,
+    distance INTEGER NOT NULL,
+    track_type TEXT NOT NULL,
+    rank INTEGER NOT NULL,
+    prize INTEGER NOT NULL DEFAULT 0,
+    exp_gained INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );`,
+
+  // hall_of_fame テーブル（殿堂入り馬）
+  `CREATE TABLE IF NOT EXISTS hall_of_fame (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    horse_name TEXT NOT NULL,
+    generation INTEGER NOT NULL,
+    speed_rank SMALLINT NOT NULL,
+    stamina_rank SMALLINT NOT NULL,
+    stability_rank SMALLINT NOT NULL,
+    burst_rank SMALLINT NOT NULL,
+    turf_fit_rank SMALLINT NOT NULL,
+    dirt_fit_rank SMALLINT NOT NULL,
+    distance_min INTEGER NOT NULL,
+    distance_max INTEGER NOT NULL,
+    running_style TEXT NOT NULL,
+    total_races INTEGER NOT NULL DEFAULT 0,
+    total_wins INTEGER NOT NULL DEFAULT 0,
+    total_prize INTEGER NOT NULL DEFAULT 0,
+    win_g1 INTEGER NOT NULL DEFAULT 0,
+    level INTEGER NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );`,
+
+  // users テーブルに週番号・総賞金カラムを追加
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS current_week INTEGER NOT NULL DEFAULT 1;`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS total_prize INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 async function runMigrations() {
