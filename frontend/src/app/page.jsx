@@ -1092,8 +1092,9 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
     if (!adoptName.trim()) return;
     setAdoptLoading(true);
     try {
-      const data = await apiAdoptHorse({ gachaId: targetHorse.id }, adoptName.trim());
-      setCurrentHorse(data.horse ?? null);
+      await apiAdoptHorse({ gachaId: targetHorse.id }, adoptName.trim());
+      const latestHorse = await apiGetHorse();
+      setCurrentHorse(latestHorse?.horse ?? null);
       closeGachaModal();
       setActiveTab('myHorse');
     } catch (err) {
