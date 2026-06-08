@@ -199,9 +199,10 @@ async function apiGacha(gachaType, count) {
 
 // 馬を育成登録する
 async function apiAdoptHorse(horseData, name) {
+  const gachaId = horseData?.gachaId ?? horseData?.id;
   return apiFetch('/api/horse/adopt', {
     method: 'POST',
-    body: JSON.stringify({ ...horseData, name }),
+    body: JSON.stringify({ gachaId, name }),
   });
 }
 
@@ -969,10 +970,11 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
   const [currentHorse, setCurrentHorse] = useState(null);
   const [horseLoading, setHorseLoading] = useState(false);
   // ガチャ
-  const [gachaResult, setGachaResult] = useState(null);
+  const [gachaResult, setGachaResult] = useState([]);
   const [gachaLoading, setGachaLoading] = useState(false);
   const [adoptName, setAdoptName] = useState('');
   const [adoptLoading, setAdoptLoading] = useState(false);
+  const [selectedGachaHorse, setSelectedGachaHorse] = useState(null);
   // 引退モーダル（false | 'confirm' | 'inherit' | 'inherit_name'）
   const [retireModal, setRetireModal] = useState(false);
   const [inheritType, setInheritType] = useState('normal');
@@ -1039,6 +1041,15 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
 
   // ランクラベルを返すヘルパー
   const statLabel = (val) => RANK_LABELS[Math.max(0, Math.min(26, val ?? 0))];
+  const gachaResults = Array.isArray(gachaResult) ? gachaResult : [];
+  const isMultiGacha = gachaResults.length > 1;
+  const selectedHorse = selectedGachaHorse ?? gachaResults[0] ?? null;
+  const getHorseRank = (horse, key) => horse?.[`${key}_rank`] ?? horse?.[key];
+  const closeGachaModal = () => {
+    setGachaResult([]);
+    setSelectedGachaHorse(null);
+    setAdoptName('');
+  };
 
   // 調教成功率の表示計算（UIのみ）
   // 式: 80 * (2/3)^成長段階数 * グレード倍率
@@ -1064,7 +1075,9 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
       const newCoins = coins - cost;
       setCoins(newCoins);
       if (authUser) apiUpdateCoins(newCoins).catch(() => {});
-      setGachaResult(data);
+      setGachaResult(Array.isArray(data?.results) ? data.results : []);
+      setSelectedGachaHorse(null);
+      setAdoptName('');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1073,14 +1086,15 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
   };
 
   // 馬を育成登録する
-  const handleAdopt = async () => {
+  const handleAdopt = async (horse = null) => {
+    const targetHorse = horse ?? selectedHorse;
+    if (!targetHorse?.id) return;
     if (!adoptName.trim()) return;
     setAdoptLoading(true);
     try {
-      const data = await apiAdoptHorse(gachaResult, adoptName.trim());
+      const data = await apiAdoptHorse({ gachaId: targetHorse.id }, adoptName.trim());
       setCurrentHorse(data.horse ?? null);
-      setGachaResult(null);
-      setAdoptName('');
+      closeGachaModal();
       setActiveTab('myHorse');
     } catch (err) {
       setError(err.message);
@@ -1830,56 +1844,132 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
       )}
 
       {/* ガチャ結果モーダル */}
-      {gachaResult && (
+      {gachaResults.length > 0 && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-4xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
             <h3 className="text-white font-bold text-lg">🎰 ガチャ結果</h3>
-            <div className="bg-slate-700 rounded-xl p-4 flex flex-col gap-1 text-sm">
-              <p className="text-slate-300">
-                脚質: <span className="text-white font-semibold">{gachaResult.running_style}</span>
-              </p>
-              {[
-                ['スピード',   gachaResult.speed],
-                ['スタミナ',   gachaResult.stamina],
-                ['安定性',     gachaResult.stability],
-                ['瞬発力',     gachaResult.burst],
-                ['芝適性',     gachaResult.turf_fit],
-                ['ダート適性', gachaResult.dirt_fit],
-              ].map(([lbl, val]) => (
-                <p key={lbl} className="text-slate-300">
-                  {lbl}: <span className="text-white font-semibold">{statLabel(val)}</span>
-                </p>
-              ))}
-              <p className="text-slate-300">
-                距離: {gachaResult.distance_min}〜{gachaResult.distance_max}m
-              </p>
-            </div>
-            <p className="text-slate-300 text-sm">馬名を入力して育成を開始しますか？</p>
-            <input
-              type="text"
-              value={adoptName}
-              onChange={(e) => setAdoptName(e.target.value)}
-              placeholder="馬名を入力（必須）"
-              maxLength={20}
-              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <div className="flex gap-3">
-              <button
-                type="button"
-                disabled={adoptLoading || !adoptName.trim()}
-                onClick={handleAdopt}
-                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-semibold rounded-xl transition"
-              >
-                {adoptLoading ? '処理中...' : 'この馬を育成する'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setGachaResult(null); setAdoptName(''); }}
-                className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
-              >
-                戻す
-              </button>
-            </div>
+            {isMultiGacha ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {gachaResults.map((horse, idx) => (
+                    <div key={horse.id ?? idx} className="bg-slate-700 rounded-xl p-4 flex flex-col gap-2 text-sm">
+                      <p className="text-slate-300">No.{idx + 1}</p>
+                      <p className="text-slate-300">脚質: <span className="text-white font-semibold">{horse.running_style}</span></p>
+                      {[
+                        ['スピード', getHorseRank(horse, 'speed')],
+                        ['スタミナ', getHorseRank(horse, 'stamina')],
+                        ['安定性', getHorseRank(horse, 'stability')],
+                        ['瞬発力', getHorseRank(horse, 'burst')],
+                        ['芝適性', getHorseRank(horse, 'turf_fit')],
+                        ['ダート適性', getHorseRank(horse, 'dirt_fit')],
+                      ].map(([lbl, val]) => (
+                        <p key={lbl} className="text-slate-300">
+                          {lbl}: <span className="text-white font-semibold">{statLabel(val)}</span>
+                        </p>
+                      ))}
+                      <p className="text-slate-300">距離: {horse.distance_min}〜{horse.distance_max}m</p>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedGachaHorse(horse)}
+                        className={`mt-1 py-2 text-white font-semibold rounded-xl transition ${
+                          selectedGachaHorse?.id === horse.id
+                            ? 'bg-blue-500 hover:bg-blue-600'
+                            : 'bg-blue-600 hover:bg-blue-700'
+                        }`}
+                      >
+                        この馬を選ぶ
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {selectedGachaHorse && (
+                  <>
+                    <p className="text-slate-300 text-sm">選択した馬の名前を入力してください：</p>
+                    <input
+                      type="text"
+                      value={adoptName}
+                      onChange={(e) => setAdoptName(e.target.value)}
+                      placeholder="馬名を入力（必須）"
+                      maxLength={20}
+                      className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        disabled={adoptLoading || !adoptName.trim()}
+                        onClick={() => handleAdopt(selectedGachaHorse)}
+                        className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-semibold rounded-xl transition"
+                      >
+                        {adoptLoading ? '処理中...' : 'この馬で育成する'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedGachaHorse(null); setAdoptName(''); }}
+                        className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
+                      >
+                        選択を解除
+                      </button>
+                    </div>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={closeGachaModal}
+                  className="w-full py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
+                >
+                  全部戻す
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="bg-slate-700 rounded-xl p-4 flex flex-col gap-1 text-sm">
+                  <p className="text-slate-300">
+                    脚質: <span className="text-white font-semibold">{selectedHorse?.running_style}</span>
+                  </p>
+                  {[
+                    ['スピード', getHorseRank(selectedHorse, 'speed')],
+                    ['スタミナ', getHorseRank(selectedHorse, 'stamina')],
+                    ['安定性', getHorseRank(selectedHorse, 'stability')],
+                    ['瞬発力', getHorseRank(selectedHorse, 'burst')],
+                    ['芝適性', getHorseRank(selectedHorse, 'turf_fit')],
+                    ['ダート適性', getHorseRank(selectedHorse, 'dirt_fit')],
+                  ].map(([lbl, val]) => (
+                    <p key={lbl} className="text-slate-300">
+                      {lbl}: <span className="text-white font-semibold">{statLabel(val)}</span>
+                    </p>
+                  ))}
+                  <p className="text-slate-300">
+                    距離: {selectedHorse?.distance_min}〜{selectedHorse?.distance_max}m
+                  </p>
+                </div>
+                <p className="text-slate-300 text-sm">馬名を入力して育成を開始しますか？</p>
+                <input
+                  type="text"
+                  value={adoptName}
+                  onChange={(e) => setAdoptName(e.target.value)}
+                  placeholder="馬名を入力（必須）"
+                  maxLength={20}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    disabled={adoptLoading || !adoptName.trim()}
+                    onClick={() => handleAdopt(selectedHorse)}
+                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-semibold rounded-xl transition"
+                  >
+                    {adoptLoading ? '処理中...' : 'この馬を育成する'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeGachaModal}
+                    className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
+                  >
+                    戻す
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
