@@ -34,7 +34,7 @@ npm run migrate  # マイグレーション実行
 npm start        # http://localhost:3001
 ```
 
-## API エンドポイント（初期）
+## API エンドポイント
 
 | メソッド | パス | 説明 |
 |---|---|---|
@@ -42,6 +42,20 @@ npm start        # http://localhost:3001
 | POST | /api/horses | 馬を保存 |
 | GET  | /api/races  | レース履歴取得 |
 | POST | /api/races  | レース結果を保存 |
+| GET  | /api/horse | 自分の育成馬を取得 |
+| POST | /api/gacha | 育成用ガチャを実行 |
+| POST | /api/horse/adopt | ガチャ結果を採用して育成馬を作成 |
+| POST | /api/horse/train | 調教・飼葉を実行 |
+| POST | /api/horse/retire | 育成馬を引退し継承ランクを計算 |
+| POST | /api/horse/delete | 育成馬を削除 |
+| POST | /api/horse/inherit | 継承馬を作成 |
+| GET  | /api/horse/races | 出走可能グレードを取得 |
+| POST | /api/horse/enter | 最新レースへ登録 |
+| POST | /api/week/advance | 週を1つ進める |
+| GET  | /api/hall-of-fame | 自分の殿堂入り馬を取得 |
+| POST | /api/hall-of-fame/battle | 殿堂入り馬で模擬レースを実行 |
+| GET  | /api/ranking/g1wins | G1勝利数ランキングを取得 |
+| GET  | /api/ranking/prize | 総賞金ランキングを取得 |
 
 ## ゲーム仕様の主要ポイント
 

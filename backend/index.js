@@ -156,6 +156,15 @@ const DISTANCE_OPTIONS = {
   mile: [1600, 1700, 1800],
   long: [2000, 2200, 2400, 2600, 2800, 3000, 3200],
 };
+const HORSE_UPDATE_COLUMNS = new Set([
+  'speed_rank', 'stamina_rank', 'stability_rank', 'burst_rank', 'turf_fit_rank', 'dirt_fit_rank',
+  'distance_min', 'distance_max', 'running_style', 'level', 'exp', 'total_coins_invested',
+  'training_count', 'speed_growth', 'stamina_growth', 'stability_growth', 'burst_growth',
+  'turf_fit_growth', 'dirt_fit_growth', 'distance_min_growth', 'distance_max_growth',
+  'total_races', 'total_wins', 'total_prize', 'win_shinjuba', 'win_mishousen', 'win_1sho',
+  'win_2sho', 'win_3sho', 'win_listed', 'win_open', 'win_g3', 'win_g2', 'win_g1', 'has_raced',
+  'is_retired', 'is_deleted', 'is_hall_of_fame', 'inheritance_bonus_percent',
+]);
 
 // JWT認証ミドルウェア
 function requireAuth(req, res, next) {
@@ -311,8 +320,15 @@ function getLevelBonusPercent(level) {
   return level * 10;
 }
 
-function buildUpdateQuery(table, idColumn, idValue, fields) {
+function buildUpdateQuery(table, idColumn, idValue, fields, allowedColumns = null) {
   const entries = Object.entries(fields);
+  if (allowedColumns) {
+    for (const [key] of entries) {
+      if (!allowedColumns.has(key)) {
+        throw createHttpError(500, '更新対象カラムが不正です');
+      }
+    }
+  }
   const assignments = entries.map(([key], index) => `${key} = $${index + 2}`);
   return {
     text: `UPDATE ${table} SET ${assignments.join(', ')}, updated_at = NOW() WHERE ${idColumn} = $1 RETURNING *`,
@@ -321,7 +337,7 @@ function buildUpdateQuery(table, idColumn, idValue, fields) {
 }
 
 async function updateHorse(client, horseId, fields) {
-  const query = buildUpdateQuery('trained_horses', 'id', horseId, fields);
+  const query = buildUpdateQuery('trained_horses', 'id', horseId, fields, HORSE_UPDATE_COLUMNS);
   const { rows } = await client.query(query.text, query.values);
   return rows[0];
 }
@@ -441,7 +457,7 @@ async function syncHorseRaceStats(client, horseId) {
     has_raced: summary.total_races > 0,
     level: levelData.level,
     exp: levelData.exp,
-  });
+  }, HORSE_UPDATE_COLUMNS);
   const { rows: updatedRows } = await client.query(query.text, query.values);
   return updatedRows[0];
 }
@@ -1065,10 +1081,11 @@ app.post('/api/gacha', authMiddleware, async (req, res) => {
 // ガチャ結果を採用して育成馬作成
 app.post('/api/horse/adopt', authMiddleware, async (req, res) => {
   const { gachaId, name } = req.body || {};
+  const trimmedName = typeof name === 'string' ? name.trim() : '';
   if (!Number.isInteger(gachaId)) {
     return res.status(400).json({ error: 'gachaId は整数である必要があります' });
   }
-  if (!name || typeof name !== 'string') {
+  if (!trimmedName) {
     return res.status(400).json({ error: 'name は必須です' });
   }
   const client = await pool.connect();
@@ -1099,7 +1116,7 @@ app.post('/api/horse/adopt', authMiddleware, async (req, res) => {
       RETURNING *`,
       [
         req.userId,
-        name.trim(),
+        trimmedName,
         gacha.speed_rank,
         gacha.stamina_rank,
         gacha.stability_rank,
@@ -1369,7 +1386,8 @@ app.post('/api/horse/delete', authMiddleware, async (req, res) => {
 // 継承馬作成
 app.post('/api/horse/inherit', authMiddleware, async (req, res) => {
   const { name, inheritedRanks } = req.body || {};
-  if (!name || typeof name !== 'string') {
+  const trimmedName = typeof name === 'string' ? name.trim() : '';
+  if (!trimmedName) {
     return res.status(400).json({ error: 'name は必須です' });
   }
   const client = await pool.connect();
@@ -1394,7 +1412,7 @@ app.post('/api/horse/inherit', authMiddleware, async (req, res) => {
       RETURNING *`,
       [
         req.userId,
-        name.trim(),
+        trimmedName,
         normalizedRanks.speed_rank,
         normalizedRanks.stamina_rank,
         normalizedRanks.stability_rank,
