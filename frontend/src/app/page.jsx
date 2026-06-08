@@ -96,6 +96,151 @@ async function apiRankingPayout(betType) {
   return apiFetch(path);
 }
 
+// ===== 育成モード 定数 =====
+
+// ステータスランクラベル（0=E- 〜 26=Z+）
+const RANK_LABELS = [
+  'E-','E','E+','D-','D','D+','C-','C','C+',
+  'B-','B','B+','A-','A','A+','S-','S','S+',
+  'SS-','SS','SS+','SSS-','SSS','SSS+','Z-','Z','Z+',
+];
+
+// ガチャ種別定義
+const GACHA_TYPES = [
+  { key: 'speed',     label: 'スピードガチャ',   single: 30000,   multi: 270000  },
+  { key: 'stamina',   label: 'スタミナガチャ',   single: 30000,   multi: 270000  },
+  { key: 'stability', label: '安定ガチャ',        single: 30000,   multi: 270000  },
+  { key: 'burst',     label: '瞬発ガチャ',        single: 30000,   multi: 270000  },
+  { key: 'turf',      label: '芝ガチャ',          single: 30000,   multi: 270000  },
+  { key: 'dirt',      label: 'ダートガチャ',      single: 30000,   multi: 270000  },
+  { key: 'premium',   label: 'プレミアムガチャ',  single: 500000,  multi: 4500000 },
+];
+
+// 調教種別定義
+const TRAIN_TYPES = [
+  { key: 'speed',         label: 'スピード',    special: false },
+  { key: 'stamina',       label: 'スタミナ',    special: false },
+  { key: 'stability',     label: '安定性',      special: false },
+  { key: 'burst',         label: '瞬発力',      special: false },
+  { key: 'turf_fit',      label: '芝適性',      special: false },
+  { key: 'dirt_fit',      label: 'ダート適性',  special: false },
+  { key: 'distance_min',  label: '距離下限',    special: true  },
+  { key: 'distance_max',  label: '距離上限',    special: true  },
+  { key: 'running_style', label: '脚質',        special: true  },
+];
+
+// 調教グレード定義（コスト・成功率倍率）
+const TRAIN_GRADES = [
+  { key: 'normal',  label: '通常',  cost: 1000,  rateMult: 1.0  },
+  { key: 'good',    label: '上質',  cost: 5000,  rateMult: 1.1  },
+  { key: 'high',    label: '高級',  cost: 20000, rateMult: 1.25 },
+  { key: 'special', label: '英才',  cost: 80000, rateMult: 1.5  },
+];
+
+// 飼葉種別定義
+const FEED_TYPES = [
+  { key: 'normal',  label: '普通の飼葉',  cost: 500,   effect: '体力を少し回復する'    },
+  { key: 'good',    label: '上質な飼葉',  cost: 2000,  effect: '体力を中程度回復する'  },
+  { key: 'special', label: '特上飼葉',    cost: 8000,  effect: '体力を大きく回復する'  },
+  { key: 'legend',  label: '幻の飼葉',    cost: 30000, effect: '体力を完全回復する'    },
+];
+
+// 固定レース（3勝クラス以下で表示）
+const FIXED_RACES = [
+  { name: 'フィクションレース', distance: 1600, track: 'turf' },
+  { name: 'フィクションレース', distance: 1600, track: 'dirt' },
+  { name: 'フィクションレース', distance: 2000, track: 'turf' },
+  { name: 'フィクションレース', distance: 2000, track: 'dirt' },
+  { name: 'フィクションレース', distance: 2400, track: 'turf' },
+  { name: 'フィクションレース', distance: 2400, track: 'dirt' },
+];
+
+// ===== 育成モード API =====
+
+// 現在の育成馬を取得
+async function apiGetHorse() {
+  return apiFetch('/api/horse/me');
+}
+
+// ガチャを引く（gachaType: キー名, count: 1 or 10）
+async function apiGacha(gachaType, count) {
+  return apiFetch('/api/horse/gacha', {
+    method: 'POST',
+    body: JSON.stringify({ gacha_type: gachaType, count }),
+  });
+}
+
+// 馬を育成登録する
+async function apiAdoptHorse(horseData, name) {
+  return apiFetch('/api/horse/adopt', {
+    method: 'POST',
+    body: JSON.stringify({ ...horseData, name }),
+  });
+}
+
+// 馬を引退させる（inheritType: 'low' | 'normal' | 'high'）
+async function apiRetireHorse(inheritType) {
+  return apiFetch('/api/horse/retire', {
+    method: 'POST',
+    body: JSON.stringify({ inherit_type: inheritType }),
+  });
+}
+
+// 継承馬を登録する
+async function apiInheritHorse(retireResultData, name) {
+  return apiFetch('/api/horse/inherit', {
+    method: 'POST',
+    body: JSON.stringify({ ...retireResultData, name }),
+  });
+}
+
+// 馬を抹消する
+async function apiDeleteHorse() {
+  return apiFetch('/api/horse/delete', { method: 'POST' });
+}
+
+// 調教を実施する
+async function apiTrainHorse(type, grade) {
+  return apiFetch('/api/horse/train', {
+    method: 'POST',
+    body: JSON.stringify({ type, grade }),
+  });
+}
+
+// 飼葉を与える
+async function apiFeedHorse(feedType) {
+  return apiFetch('/api/horse/train', {
+    method: 'POST',
+    body: JSON.stringify({ type: 'feed', grade: feedType }),
+  });
+}
+
+// 出走可能レース一覧を取得
+async function apiGetRaces() {
+  return apiFetch('/api/horse/races');
+}
+
+// レースに出走登録する
+async function apiEnterRace(race) {
+  return apiFetch('/api/horse/enter', {
+    method: 'POST',
+    body: JSON.stringify(race),
+  });
+}
+
+// 殿堂入り馬一覧を取得
+async function apiGetHallOfFame() {
+  return apiFetch('/api/hall-of-fame');
+}
+
+// 殿堂馬でバトルを実施する
+async function apiBattle(horseIds) {
+  return apiFetch('/api/hall-of-fame/battle', {
+    method: 'POST',
+    body: JSON.stringify({ horse_ids: horseIds }),
+  });
+}
+
 // ===== コンポーネント =====
 
 // ステータス（グレードのみ）
@@ -757,6 +902,1009 @@ function LoginPage({ onAuth }) {
   );
 }
 
+// ===== 育成モード =====
+// coins / setCoins: 親Pageから受け取るコイン状態
+// authUser: 認証済みユーザー情報
+function TrainingMode({ coins, setCoins, authUser }) {
+  // タブ管理
+  const [activeTab, setActiveTab] = useState('myHorse'); // myHorse | gacha | train | race | hallOfFame
+  // 育成馬
+  const [currentHorse, setCurrentHorse] = useState(null);
+  const [horseLoading, setHorseLoading] = useState(false);
+  // ガチャ
+  const [gachaResult, setGachaResult] = useState(null);
+  const [gachaLoading, setGachaLoading] = useState(false);
+  const [adoptName, setAdoptName] = useState('');
+  const [adoptLoading, setAdoptLoading] = useState(false);
+  // 引退モーダル（false | 'confirm' | 'inherit' | 'inherit_name'）
+  const [retireModal, setRetireModal] = useState(false);
+  const [inheritType, setInheritType] = useState('normal');
+  const [retireResultData, setRetireResultData] = useState(null);
+  const [inheritName, setInheritName] = useState('');
+  const [retireLoading, setRetireLoading] = useState(false);
+  // 抹消モーダル
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  // 調教・飼葉
+  const [trainType, setTrainType] = useState('speed');
+  const [trainGrade, setTrainGrade] = useState('normal');
+  const [trainLoading, setTrainLoading] = useState(false);
+  const [trainResult, setTrainResult] = useState(null);
+  // レース
+  const [apiRaces, setApiRaces] = useState([]);
+  const [racesLoading, setRacesLoading] = useState(false);
+  const [raceResult, setRaceResult] = useState(null);
+  const [enterLoading, setEnterLoading] = useState(false);
+  // 殿堂入り
+  const [hallOfFame, setHallOfFame] = useState([]);
+  const [hofLoading, setHofLoading] = useState(false);
+  const [battleSel, setBattleSel] = useState([]);
+  const [battleResult, setBattleResult] = useState(null);
+  const [battleLoading, setBattleLoading] = useState(false);
+  // エラー
+  const [error, setError] = useState('');
+
+  // 育成馬データを取得
+  const loadHorse = useCallback(async () => {
+    setHorseLoading(true);
+    try {
+      const data = await apiGetHorse();
+      setCurrentHorse(data.horse ?? null);
+    } catch {
+      setCurrentHorse(null);
+    } finally {
+      setHorseLoading(false);
+    }
+  }, []);
+
+  // 初回マウント時に馬データ取得
+  useEffect(() => {
+    loadHorse();
+  }, [loadHorse]);
+
+  // タブ切り替え時の副作用（レース・殿堂情報の取得）
+  useEffect(() => {
+    if (activeTab === 'race' && currentHorse) {
+      setRacesLoading(true);
+      apiGetRaces()
+        .then((data) => setApiRaces(data.races ?? []))
+        .catch(() => setApiRaces([]))
+        .finally(() => setRacesLoading(false));
+    }
+    if (activeTab === 'hallOfFame') {
+      setHofLoading(true);
+      apiGetHallOfFame()
+        .then((data) => setHallOfFame(data.horses ?? []))
+        .catch(() => setHallOfFame([]))
+        .finally(() => setHofLoading(false));
+    }
+  }, [activeTab, currentHorse]);
+
+  // ランクラベルを返すヘルパー
+  const statLabel = (val) => RANK_LABELS[Math.max(0, Math.min(26, val ?? 0))];
+
+  // 調教成功率の表示計算（UIのみ）
+  // 式: 80 * (2/3)^成長段階数 * グレード倍率
+  const calcSuccessRate = (growthStages, rateMult) => {
+    const rate = 80 * Math.pow(2 / 3, growthStages ?? 0) * rateMult;
+    return Math.min(100, rate).toFixed(1);
+  };
+
+  // ガチャを引く
+  const handleGacha = async (gachaType, count) => {
+    const info = GACHA_TYPES.find((g) => g.key === gachaType);
+    const cost = count === 1 ? info.single : info.multi;
+    if (coins < cost) {
+      setError(`コインが不足しています（必要: ${cost.toLocaleString()}C）`);
+      return;
+    }
+    setError('');
+    setGachaLoading(true);
+    try {
+      const data = await apiGacha(gachaType, count);
+      const newCoins = coins - cost;
+      setCoins(newCoins);
+      if (authUser) apiUpdateCoins(newCoins).catch(() => {});
+      setGachaResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGachaLoading(false);
+    }
+  };
+
+  // 馬を育成登録する
+  const handleAdopt = async () => {
+    if (!adoptName.trim()) return;
+    setAdoptLoading(true);
+    try {
+      const data = await apiAdoptHorse(gachaResult, adoptName.trim());
+      setCurrentHorse(data.horse ?? null);
+      setGachaResult(null);
+      setAdoptName('');
+      setActiveTab('myHorse');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAdoptLoading(false);
+    }
+  };
+
+  // 引退処理（殿堂入り）
+  const handleRetire = async () => {
+    setRetireLoading(true);
+    try {
+      const data = await apiRetireHorse(inheritType);
+      setRetireResultData(data);
+      setCurrentHorse(null);
+      setRetireModal('inherit_name');
+    } catch (err) {
+      setError(err.message);
+      setRetireModal(false);
+    } finally {
+      setRetireLoading(false);
+    }
+  };
+
+  // 継承処理
+  const handleInherit = async () => {
+    if (!inheritName.trim()) return;
+    setRetireLoading(true);
+    try {
+      const data = await apiInheritHorse(retireResultData, inheritName.trim());
+      setCurrentHorse(data.horse ?? null);
+      setRetireModal(false);
+      setRetireResultData(null);
+      setInheritName('');
+      setActiveTab('myHorse');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRetireLoading(false);
+    }
+  };
+
+  // 抹消処理
+  const handleDelete = async () => {
+    setDeleteLoading(true);
+    try {
+      await apiDeleteHorse();
+      setCurrentHorse(null);
+      setDeleteModal(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // 調教を実施する
+  const handleTrain = async () => {
+    const gradeInfo = TRAIN_GRADES.find((g) => g.key === trainGrade);
+    if (coins < gradeInfo.cost) {
+      setError(`コインが不足しています（必要: ${gradeInfo.cost.toLocaleString()}C）`);
+      return;
+    }
+    setError('');
+    setTrainLoading(true);
+    try {
+      const data = await apiTrainHorse(trainType, trainGrade);
+      const cost = data.cost ?? gradeInfo.cost;
+      const newCoins = coins - cost;
+      setCoins(newCoins);
+      if (authUser) apiUpdateCoins(newCoins).catch(() => {});
+      if (data.horse) setCurrentHorse(data.horse);
+      setTrainResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setTrainLoading(false);
+    }
+  };
+
+  // 飼葉を与える
+  const handleFeed = async (feedKey) => {
+    const info = FEED_TYPES.find((f) => f.key === feedKey);
+    if (coins < info.cost) {
+      setError(`コインが不足しています（必要: ${info.cost.toLocaleString()}C）`);
+      return;
+    }
+    setError('');
+    setTrainLoading(true);
+    try {
+      const data = await apiFeedHorse(feedKey);
+      const newCoins = coins - info.cost;
+      setCoins(newCoins);
+      if (authUser) apiUpdateCoins(newCoins).catch(() => {});
+      if (data.horse) setCurrentHorse(data.horse);
+      setTrainResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setTrainLoading(false);
+    }
+  };
+
+  // レースに出走登録する
+  const handleEnterRace = async (race) => {
+    setEnterLoading(true);
+    setError('');
+    try {
+      const data = await apiEnterRace(race);
+      if (data.prize) {
+        const newCoins = coins + data.prize;
+        setCoins(newCoins);
+        if (authUser) apiUpdateCoins(newCoins).catch(() => {});
+      }
+      if (data.horse) setCurrentHorse(data.horse);
+      setRaceResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnterLoading(false);
+    }
+  };
+
+  // 殿堂馬でバトルを実施する
+  const handleBattle = async () => {
+    setBattleLoading(true);
+    setError('');
+    try {
+      const data = await apiBattle(battleSel.map((h) => h.id));
+      setBattleResult(data);
+      setBattleSel([]);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBattleLoading(false);
+    }
+  };
+
+  // タブ定義
+  const TABS = [
+    { key: 'myHorse',    label: '🐴 マイホース' },
+    { key: 'gacha',      label: '🎰 ガチャ'      },
+    { key: 'train',      label: '💪 調教・飼葉'  },
+    { key: 'race',       label: '🏁 レース出走'  },
+    { key: 'hallOfFame', label: '🏆 殿堂入り'    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* エラー表示バー */}
+      {error && (
+        <div className="bg-rose-900/60 border border-rose-700 rounded-xl px-4 py-2 text-sm text-rose-300 flex items-center justify-between">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError('')} className="ml-2 text-rose-400 hover:text-rose-200">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* タブナビゲーション */}
+      <div className="flex flex-wrap gap-1">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => { setActiveTab(tab.key); setError(''); }}
+            className={`px-3 py-2 text-sm font-semibold rounded-xl transition ${
+              activeTab === tab.key
+                ? 'bg-blue-600 text-white'
+                : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── タブ①：マイホース ── */}
+      {activeTab === 'myHorse' && (
+        <div>
+          {horseLoading ? (
+            <p className="text-slate-400 text-center py-8">読み込み中...</p>
+          ) : !currentHorse ? (
+            <div className="bg-slate-800 rounded-2xl p-6 text-center text-slate-300">
+              <p>育成馬がいません。ガチャで馬を入手しましょう！</p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('gacha')}
+                className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl transition"
+              >
+                ガチャへ
+              </button>
+            </div>
+          ) : (
+            <div className="bg-slate-800 rounded-2xl p-6 flex flex-col gap-4">
+              {/* 馬名・世代・脚質 */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h2 className="text-xl font-bold text-white">{currentHorse.name}</h2>
+                  <span className="text-slate-400 text-sm">第{currentHorse.generation}世代</span>
+                </div>
+                <span className="px-3 py-1 bg-indigo-700 text-indigo-100 rounded-full text-sm font-semibold">
+                  {currentHorse.runningStyle ?? currentHorse.running_style}
+                </span>
+              </div>
+
+              {/* ステータス一覧 */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {[
+                  ['スピード',   currentHorse.speed],
+                  ['スタミナ',   currentHorse.stamina],
+                  ['安定性',     currentHorse.stability],
+                  ['瞬発力',     currentHorse.burst],
+                  ['芝適性',     currentHorse.turfFit ?? currentHorse.turf_fit],
+                  ['ダート適性', currentHorse.dirtFit ?? currentHorse.dirt_fit],
+                ].map(([label, val]) => (
+                  <div key={label} className="bg-slate-700 rounded-lg px-3 py-2 flex items-center justify-between">
+                    <span className="text-slate-400 text-xs">{label}</span>
+                    <span className="text-white font-bold text-sm">{statLabel(val)}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* 距離適性 */}
+              <p className="text-slate-300 text-sm">
+                距離適性: {currentHorse.distance_min}〜{currentHorse.distance_max}m
+              </p>
+
+              {/* レベル・EXPバー */}
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-300 font-semibold">Lv.{currentHorse.level}</span>
+                  <span className="text-slate-400 text-xs">
+                    EXP {currentHorse.exp}/{currentHorse.exp_next ?? '???'}
+                  </span>
+                </div>
+                {currentHorse.exp_next ? (
+                  <div className="h-2 bg-slate-600 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all"
+                      style={{ width: `${Math.min(100, ((currentHorse.exp ?? 0) / currentHorse.exp_next) * 100)}%` }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              {/* 戦績 */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-slate-700 rounded-xl py-2">
+                  <p className="text-slate-400 text-xs">総レース</p>
+                  <p className="text-white font-bold">{currentHorse.total_races ?? 0}戦</p>
+                </div>
+                <div className="bg-slate-700 rounded-xl py-2">
+                  <p className="text-slate-400 text-xs">勝利数</p>
+                  <p className="text-white font-bold">{currentHorse.wins ?? 0}勝</p>
+                </div>
+                <div className="bg-slate-700 rounded-xl py-2">
+                  <p className="text-slate-400 text-xs">獲得賞金</p>
+                  <p className="text-white font-bold text-xs">{(currentHorse.prize_money ?? 0).toLocaleString()}C</p>
+                </div>
+              </div>
+
+              {/* 引退・抹消ボタン */}
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setRetireModal('confirm'); setError(''); }}
+                  className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl transition text-sm"
+                >
+                  引退
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setDeleteModal(true); setError(''); }}
+                  className="flex-1 py-2 bg-rose-700 hover:bg-rose-800 text-white font-semibold rounded-xl transition text-sm"
+                >
+                  抹消
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── タブ②：ガチャ ── */}
+      {activeTab === 'gacha' && (
+        <div className="flex flex-col gap-4">
+          {currentHorse ? (
+            <div className="bg-slate-800 rounded-2xl p-6 text-center text-slate-300">
+              現在育成中の馬がいます。引退または抹消してから引いてください。
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {GACHA_TYPES.map((g) => (
+                <div key={g.key} className="bg-slate-800 rounded-2xl p-4 flex flex-col gap-3">
+                  <h3 className="text-white font-bold">{g.label}</h3>
+                  <div className="text-slate-400 text-xs space-y-0.5">
+                    <p>1回: {g.single.toLocaleString()}C</p>
+                    <p>10連: {g.multi.toLocaleString()}C</p>
+                  </div>
+                  <div className="flex gap-2 mt-auto pt-1">
+                    <button
+                      type="button"
+                      disabled={gachaLoading || coins < g.single}
+                      onClick={() => handleGacha(g.key, 1)}
+                      className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:text-slate-400 text-white text-xs font-semibold rounded-lg transition"
+                    >
+                      1回
+                    </button>
+                    <button
+                      type="button"
+                      disabled={gachaLoading || coins < g.multi}
+                      onClick={() => handleGacha(g.key, 10)}
+                      className="flex-1 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 disabled:text-slate-400 text-white text-xs font-semibold rounded-lg transition"
+                    >
+                      10連
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── タブ③：調教・飼葉 ── */}
+      {activeTab === 'train' && (
+        <div className="flex flex-col gap-4">
+          {!currentHorse ? (
+            <div className="bg-slate-800 rounded-2xl p-6 text-center text-slate-300">
+              育成馬がいません。
+              <button
+                type="button"
+                onClick={() => setActiveTab('myHorse')}
+                className="ml-2 text-blue-400 underline hover:text-blue-300"
+              >
+                マイホースへ
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* 調教セクション */}
+              <div className="bg-slate-800 rounded-2xl p-4 flex flex-col gap-4">
+                <h3 className="text-white font-bold text-base">調教</h3>
+                {/* 調教種別ボタン */}
+                <div className="flex flex-wrap gap-2">
+                  {TRAIN_TYPES.map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setTrainType(t.key)}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition border ${
+                        trainType === t.key
+                          ? 'bg-blue-600 text-white border-blue-500'
+                          : t.special
+                            ? 'bg-slate-700 text-purple-300 border-purple-600 hover:bg-slate-600'
+                            : 'bg-slate-700 text-slate-300 border-transparent hover:bg-slate-600'
+                      }`}
+                    >
+                      {t.special ? '⚡ ' : ''}{t.label}
+                    </button>
+                  ))}
+                </div>
+                {/* グレード選択 */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {TRAIN_GRADES.map((g) => {
+                    const rate = calcSuccessRate(currentHorse.growth_stages, g.rateMult);
+                    return (
+                      <button
+                        key={g.key}
+                        type="button"
+                        onClick={() => setTrainGrade(g.key)}
+                        className={`p-3 rounded-xl text-left flex flex-col gap-1 transition border-2 ${
+                          trainGrade === g.key
+                            ? 'border-blue-500 bg-blue-900/40'
+                            : 'border-transparent bg-slate-700 hover:bg-slate-600'
+                        }`}
+                      >
+                        <span className="text-white text-sm font-bold">{g.label}</span>
+                        <span className="text-slate-400 text-xs">{g.cost.toLocaleString()}C</span>
+                        <span className="text-green-400 text-xs">成功率 {rate}%</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  disabled={trainLoading}
+                  onClick={handleTrain}
+                  className="py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-bold rounded-xl transition"
+                >
+                  {trainLoading ? '調教中...' : '調教する'}
+                </button>
+              </div>
+
+              {/* 飼葉セクション */}
+              <div className="bg-slate-800 rounded-2xl p-4 flex flex-col gap-4">
+                <h3 className="text-white font-bold text-base">飼葉</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {FEED_TYPES.map((f) => (
+                    <div key={f.key} className="bg-slate-700 rounded-xl p-3 flex flex-col gap-2">
+                      <p className="text-white text-sm font-semibold">{f.label}</p>
+                      <p className="text-slate-400 text-xs">{f.cost.toLocaleString()}C</p>
+                      <p className="text-slate-300 text-xs">{f.effect}</p>
+                      <button
+                        type="button"
+                        disabled={trainLoading || coins < f.cost}
+                        onClick={() => handleFeed(f.key)}
+                        className="mt-auto py-1.5 bg-emerald-700 hover:bg-emerald-600 disabled:bg-slate-600 disabled:text-slate-400 text-white text-xs font-semibold rounded-lg transition"
+                      >
+                        与える
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── タブ④：レース出走 ── */}
+      {activeTab === 'race' && (
+        <div className="flex flex-col gap-4">
+          {!currentHorse ? (
+            <div className="bg-slate-800 rounded-2xl p-6 text-center text-slate-300">
+              育成馬がいません。
+              <button
+                type="button"
+                onClick={() => setActiveTab('myHorse')}
+                className="ml-2 text-blue-400 underline hover:text-blue-300"
+              >
+                マイホースへ
+              </button>
+            </div>
+          ) : racesLoading ? (
+            <p className="text-slate-400 text-center py-8">レース情報読み込み中...</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {/* 固定レース（3勝クラス以下）＋ APIから取得したレース */}
+              {[...FIXED_RACES, ...apiRaces].map((race, idx) => (
+                <div key={idx} className="bg-slate-800 rounded-2xl p-4 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-white font-semibold text-sm">{race.name}</h3>
+                    {race.grade && (
+                      <span className="text-xs bg-yellow-700 text-yellow-100 px-2 py-0.5 rounded-full">
+                        {race.grade}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-slate-400 text-xs flex gap-3">
+                    <span>距離: {race.distance}m</span>
+                    <span>馬場: {race.track === 'turf' ? '芝' : 'ダート'}</span>
+                  </div>
+                  {race.prize ? (
+                    <span className="text-amber-400 text-xs">賞金: {race.prize.toLocaleString()}C</span>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={enterLoading}
+                    onClick={() => handleEnterRace(race)}
+                    className="mt-auto py-2 bg-emerald-700 hover:bg-emerald-600 disabled:bg-slate-600 text-white text-sm font-semibold rounded-xl transition"
+                  >
+                    出走登録
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── タブ⑤：殿堂入り ── */}
+      {activeTab === 'hallOfFame' && (
+        <div className="flex flex-col gap-4">
+          {hofLoading ? (
+            <p className="text-slate-400 text-center py-8">読み込み中...</p>
+          ) : hallOfFame.length === 0 ? (
+            <div className="bg-slate-800 rounded-2xl p-6 text-center text-slate-300">
+              殿堂入りした馬がいません。
+            </div>
+          ) : (
+            <>
+              <p className="text-slate-300 text-sm">
+                2〜8頭を選択して「バトル開始」ボタンを押してください。
+                <span className="ml-2 text-blue-400 font-semibold">（選択中: {battleSel.length}頭）</span>
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {hallOfFame.map((horse, idx) => {
+                  const isSelected = battleSel.some((h) => h.id === horse.id);
+                  return (
+                    <div
+                      key={idx}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() =>
+                        setBattleSel((prev) =>
+                          isSelected
+                            ? prev.filter((h) => h.id !== horse.id)
+                            : prev.length < 8
+                              ? [...prev, horse]
+                              : prev
+                        )
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          setBattleSel((prev) =>
+                            isSelected
+                              ? prev.filter((h) => h.id !== horse.id)
+                              : prev.length < 8
+                                ? [...prev, horse]
+                                : prev
+                          );
+                        }
+                      }}
+                      className={`bg-slate-800 rounded-2xl p-4 flex flex-col gap-2 border-2 cursor-pointer transition ${
+                        isSelected ? 'border-blue-500' : 'border-transparent hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-white font-bold">{horse.name}</h3>
+                        <span className="text-slate-400 text-xs">第{horse.generation}世代</span>
+                      </div>
+                      <p className="text-slate-400 text-xs">Lv.{horse.level}</p>
+                      {/* ステータス一覧 */}
+                      <div className="grid grid-cols-3 gap-1">
+                        {[
+                          ['速', horse.speed],
+                          ['ス', horse.stamina],
+                          ['安', horse.stability],
+                          ['瞬', horse.burst],
+                          ['芝', horse.turfFit ?? horse.turf_fit],
+                          ['ダ', horse.dirtFit ?? horse.dirt_fit],
+                        ].map(([lbl, val]) => (
+                          <div key={lbl} className="bg-slate-700 rounded px-1 py-1 text-center">
+                            <span className="text-slate-400 text-xs">{lbl} </span>
+                            <span className="text-white text-xs font-bold">{statLabel(val)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      {/* 戦績 */}
+                      <div className="grid grid-cols-2 gap-1 text-xs text-center">
+                        <div className="bg-slate-700 rounded py-1">
+                          <p className="text-slate-400">戦績</p>
+                          <p className="text-white">{horse.total_races ?? 0}戦{horse.wins ?? 0}勝</p>
+                        </div>
+                        <div className="bg-slate-700 rounded py-1">
+                          <p className="text-slate-400">G1勝利</p>
+                          <p className="text-white">{horse.g1_wins ?? 0}勝</p>
+                        </div>
+                      </div>
+                      {/* 獲得賞金 */}
+                      <p className="text-amber-400 text-xs text-center">
+                        {(horse.prize_money ?? 0).toLocaleString()}C獲得
+                      </p>
+                      {isSelected && (
+                        <p className="text-center text-blue-400 text-xs font-semibold">✓ 選択中</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {battleSel.length >= 2 && (
+                <button
+                  type="button"
+                  disabled={battleLoading}
+                  onClick={handleBattle}
+                  className="py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white font-bold rounded-xl transition"
+                >
+                  {battleLoading ? 'バトル中...' : `バトル開始（${battleSel.length}頭）`}
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ──── モーダル群 ──── */}
+
+      {/* 引退確認・継承モーダル */}
+      {retireModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4">
+            {/* STEP 1: 引退確認 */}
+            {retireModal === 'confirm' && (
+              <>
+                <h3 className="text-white font-bold text-lg">引退確認</h3>
+                <p className="text-slate-300 text-sm">
+                  {currentHorse?.name}を殿堂入りさせますか？
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setRetireModal('inherit')}
+                    className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl transition"
+                  >
+                    殿堂入りへ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRetireModal(false)}
+                    className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </>
+            )}
+            {/* STEP 2: 継承タイプ選択 */}
+            {retireModal === 'inherit' && (
+              <>
+                <h3 className="text-white font-bold text-lg">継承タイプ選択</h3>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { key: 'low',    label: 'ローリスク', desc: '低リスク・低リターン' },
+                    { key: 'normal', label: '通常',       desc: '標準的な継承'         },
+                    { key: 'high',   label: 'ハイリスク', desc: '高リスク・高リターン' },
+                  ].map((t) => (
+                    <button
+                      key={t.key}
+                      type="button"
+                      onClick={() => setInheritType(t.key)}
+                      className={`p-3 rounded-xl text-left border-2 transition ${
+                        inheritType === t.key
+                          ? 'border-blue-500 bg-blue-900/40'
+                          : 'border-transparent bg-slate-700 hover:bg-slate-600'
+                      }`}
+                    >
+                      <p className="text-white font-semibold text-sm">{t.label}</p>
+                      <p className="text-slate-400 text-xs">{t.desc}</p>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    disabled={retireLoading}
+                    onClick={handleRetire}
+                    className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-600 text-white font-semibold rounded-xl transition"
+                  >
+                    {retireLoading ? '処理中...' : '引退させる'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRetireModal(false)}
+                    className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </>
+            )}
+            {/* STEP 3: 継承結果表示・馬名入力 */}
+            {retireModal === 'inherit_name' && retireResultData && (
+              <>
+                <h3 className="text-white font-bold text-lg">継承結果</h3>
+                <div className="bg-slate-700 rounded-xl p-3 text-sm text-slate-200 space-y-1 max-h-40 overflow-y-auto">
+                  {retireResultData.stats
+                    ? Object.entries(retireResultData.stats).map(([k, v]) => (
+                        <p key={k}>{k}: <span className="text-white font-semibold">{statLabel(v)}</span></p>
+                      ))
+                    : <p className="text-slate-400">ステータス情報がありません</p>}
+                </div>
+                <p className="text-slate-300 text-sm">継承馬の名前を入力してください：</p>
+                <input
+                  type="text"
+                  value={inheritName}
+                  onChange={(e) => setInheritName(e.target.value)}
+                  placeholder="馬名（必須）"
+                  maxLength={20}
+                  className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    disabled={retireLoading || !inheritName.trim()}
+                    onClick={handleInherit}
+                    className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-semibold rounded-xl transition"
+                  >
+                    {retireLoading ? '処理中...' : '継承する'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setRetireModal(false); setRetireResultData(null); setInheritName(''); }}
+                    className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
+                  >
+                    スキップ
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 抹消確認モーダル */}
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4">
+            <h3 className="text-white font-bold text-lg">抹消確認</h3>
+            <p className="text-slate-300 text-sm">
+              {currentHorse?.name}を抹消しますか？この操作は取り消せません。
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={deleteLoading}
+                onClick={handleDelete}
+                className="flex-1 py-2 bg-rose-700 hover:bg-rose-800 disabled:bg-slate-600 text-white font-semibold rounded-xl transition"
+              >
+                {deleteLoading ? '処理中...' : '抹消する'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteModal(false)}
+                className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ガチャ結果モーダル */}
+      {gachaResult && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-white font-bold text-lg">🎰 ガチャ結果</h3>
+            <div className="bg-slate-700 rounded-xl p-4 flex flex-col gap-1 text-sm">
+              <p className="text-slate-300">
+                脚質: <span className="text-white font-semibold">{gachaResult.running_style}</span>
+              </p>
+              {[
+                ['スピード',   gachaResult.speed],
+                ['スタミナ',   gachaResult.stamina],
+                ['安定性',     gachaResult.stability],
+                ['瞬発力',     gachaResult.burst],
+                ['芝適性',     gachaResult.turf_fit],
+                ['ダート適性', gachaResult.dirt_fit],
+              ].map(([lbl, val]) => (
+                <p key={lbl} className="text-slate-300">
+                  {lbl}: <span className="text-white font-semibold">{statLabel(val)}</span>
+                </p>
+              ))}
+              <p className="text-slate-300">
+                距離: {gachaResult.distance_min}〜{gachaResult.distance_max}m
+              </p>
+            </div>
+            <p className="text-slate-300 text-sm">馬名を入力して育成を開始しますか？</p>
+            <input
+              type="text"
+              value={adoptName}
+              onChange={(e) => setAdoptName(e.target.value)}
+              placeholder="馬名を入力（必須）"
+              maxLength={20}
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={adoptLoading || !adoptName.trim()}
+                onClick={handleAdopt}
+                className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-semibold rounded-xl transition"
+              >
+                {adoptLoading ? '処理中...' : 'この馬を育成する'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setGachaResult(null); setAdoptName(''); }}
+                className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
+              >
+                戻す
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 調教・飼葉結果モーダル */}
+      {trainResult && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4">
+            <h3 className="text-white font-bold text-lg">
+              {trainResult.success ? '✅ 成功！' : '❌ 失敗'}
+            </h3>
+            {trainResult.message && (
+              <p className="text-slate-300 text-sm">{trainResult.message}</p>
+            )}
+            {trainResult.changes && Object.keys(trainResult.changes).length > 0 && (
+              <div className="bg-slate-700 rounded-xl p-3 text-sm space-y-1">
+                {Object.entries(trainResult.changes).map(([k, v]) => (
+                  <p key={k} className="text-slate-200">
+                    {k}:{' '}
+                    <span className={Number(v) > 0 ? 'text-green-400' : Number(v) < 0 ? 'text-rose-400' : 'text-slate-400'}>
+                      {Number(v) > 0 ? '+' : ''}{v}
+                    </span>
+                  </p>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setTrainResult(null)}
+              className="py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* レース結果モーダル */}
+      {raceResult && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-white font-bold text-lg">🏁 レース結果</h3>
+            {raceResult.rank != null && (
+              <p className="text-3xl font-bold text-center text-white">{raceResult.rank}着</p>
+            )}
+            {raceResult.message && (
+              <p className="text-slate-300 text-sm">{raceResult.message}</p>
+            )}
+            {raceResult.prize > 0 && (
+              <p className="text-amber-400 font-bold text-center text-lg">
+                +{raceResult.prize.toLocaleString()}C 獲得！
+              </p>
+            )}
+            {Array.isArray(raceResult.results) && raceResult.results.length > 0 && (
+              <ol className="space-y-1 text-sm">
+                {raceResult.results.map((r, i) => (
+                  <li key={i} className="flex items-center gap-2 text-slate-300">
+                    <span className="w-6 text-center font-bold text-slate-400">{i + 1}</span>
+                    <span className={r.is_player ? 'text-white font-bold' : ''}>{r.name ?? r}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <button
+              type="button"
+              onClick={() => setRaceResult(null)}
+              className="py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* バトル結果モーダル */}
+      {battleResult && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-white font-bold text-lg">🏆 バトル結果</h3>
+            {battleResult.winner && (
+              <p className="text-center text-2xl font-bold text-amber-400">
+                🥇 {battleResult.winner}
+              </p>
+            )}
+            {Array.isArray(battleResult.results) && battleResult.results.length > 0 && (
+              <ol className="space-y-1 text-sm">
+                {battleResult.results.map((r, i) => (
+                  <li key={i} className="flex items-center gap-2 text-slate-300">
+                    <span className="w-6 text-center font-bold text-slate-400">{i + 1}</span>
+                    <span>{r.name ?? r}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <button
+              type="button"
+              onClick={() => setBattleResult(null)}
+              className="py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition"
+            >
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ===== メインページ =====
 export default function Page() {
   const [phase, setPhase] = useState('betting'); // betting | racing | result
@@ -778,6 +1926,9 @@ export default function Page() {
   const [screen, setScreen] = useState(() => (localStorage.getItem('token') ? 'game' : 'auth'));
   const [showAuth, setShowAuth] = useState(false);
   const [showRanking, setShowRanking] = useState(false);
+
+  // アプリモード（馬券 / 育成）
+  const [appMode, setAppMode] = useState('bet'); // 'bet' | 'train'
 
   // デバッグレース
   const [debugDistanceIndex, setDebugDistanceIndex] = useState(0);
@@ -1034,6 +2185,31 @@ export default function Page() {
             <Coins className="w-4 h-4" />
             <span>{coins.toLocaleString()}C</span>
           </div>
+          {/* モード切替ボタン（馬券 / 育成） */}
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setAppMode('bet')}
+              className={`px-3 py-1.5 text-sm font-semibold rounded-full transition ${
+                appMode === 'bet'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              🏇 馬券
+            </button>
+            <button
+              type="button"
+              onClick={() => setAppMode('train')}
+              className={`px-3 py-1.5 text-sm font-semibold rounded-full transition ${
+                appMode === 'train'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              🐴 育成
+            </button>
+          </div>
           {/* ユーザー名またはログインボタン */}
           {authUser ? (
             <div className="flex items-center gap-2">
@@ -1080,6 +2256,13 @@ export default function Page() {
     <div className="min-h-full">
       {Header}
       <main className="max-w-6xl mx-auto px-4 py-6">
+        {/* 育成モード */}
+        {appMode === 'train' && (
+          <TrainingMode coins={coins} setCoins={setCoins} authUser={authUser} />
+        )}
+
+        {/* 馬券モード（非表示時もDOMを保持してstate・アニメを維持） */}
+        <div className={appMode === 'bet' ? '' : 'hidden'}>
         {phase === 'betting' && (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
             <section>
@@ -1277,6 +2460,7 @@ export default function Page() {
             </button>
           </div>
         )}
+        </div>{/* 馬券モード終わり */}
       </main>
 
       {/* 認証モーダル */}
