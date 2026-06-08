@@ -251,6 +251,17 @@ const TRAIN_TYPES = [
   { key: 'running_style', label: '脚質変更',   special: true  },
 ];
 
+const TRAIN_GROWTH_KEYS = {
+  speed: 'speed_growth',
+  stamina: 'stamina_growth',
+  stability: 'stability_growth',
+  burst: 'burst_growth',
+  turf_fit: 'turf_fit_growth',
+  dirt_fit: 'dirt_fit_growth',
+  distance_min: 'distance_min_growth',
+  distance_max: 'distance_max_growth',
+};
+
 // 調教グレード定義（コスト・成功率倍率）
 const TRAIN_GRADES = [
   { key: '通常', label: '通常',  cost: 5000,   rateMult: 1.0  },
@@ -1225,6 +1236,8 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
   // エラー
   const [error, setError] = useState('');
 
+  const selectedTrainGrowth = currentHorse?.[TRAIN_GROWTH_KEYS[trainType]] ?? 0;
+
   // 育成馬データを取得
   const loadHorse = useCallback(async () => {
     setHorseLoading(true);
@@ -1659,18 +1672,10 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
               </div>
 
               {/* 戦績 */}
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-1 gap-2 text-center">
                 <div className="bg-slate-700 rounded-xl py-2">
                   <p className="text-slate-400 text-xs">総レース</p>
                   <p className="text-white font-bold">{currentHorse.total_races ?? 0}戦</p>
-                </div>
-                <div className="bg-slate-700 rounded-xl py-2">
-                  <p className="text-slate-400 text-xs">勝利数</p>
-                  <p className="text-white font-bold">{currentHorse.wins ?? 0}勝</p>
-                </div>
-                <div className="bg-slate-700 rounded-xl py-2">
-                  <p className="text-slate-400 text-xs">獲得賞金</p>
-                  <p className="text-white font-bold text-xs">{(currentHorse.prize_money ?? 0).toLocaleString()}C</p>
                 </div>
               </div>
 
@@ -1792,7 +1797,7 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
                   <>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {TRAIN_GRADES.map((g) => {
-                        const rate = calcSuccessRate(currentHorse.growth_stages, g.rateMult);
+                        const rate = calcSuccessRate(selectedTrainGrowth, g.rateMult);
                         return (
                           <button
                             key={g.key}
