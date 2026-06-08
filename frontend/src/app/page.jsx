@@ -19,8 +19,11 @@ import {
   DEBUG_RACE_DISTANCES,
   generateHorses,
   generateRaceConfig,
+  buildRaceConfigByConditions,
   generateDebugHorses,
   generateDebugRaceConfig,
+  generateRaceHorses,
+  setNPCHorseGenerator,
   calculateOdds,
   calculateBetOdds,
   initRaceState,
@@ -71,6 +74,10 @@ async function apiLogin(username, password) {
 
 async function apiMe() {
   return apiFetch('/api/auth/me');
+}
+
+async function apiGetUser() {
+  return apiFetch('/api/user');
 }
 
 async function apiUpdateCoins(coins) {
@@ -155,6 +162,26 @@ const FIXED_RACES = [
   { name: 'フィクションレース', distance: 2400, track: 'dirt' },
 ];
 
+const TRAINING_RACE_BASE_PRIZES = {
+  shinjuba: 200000,
+  mishousen: 100000,
+  '1sho': 200000,
+  '2sho': 350000,
+  '3sho': 500000,
+  listed: 300000,
+  open: 600000,
+  g3: 1500000,
+  g2: 3000000,
+  g1: 10000000,
+};
+const TRAINING_RACE_EXP_MULTIPLIERS = {
+  g1: 10,
+  g2: 7,
+  g3: 5,
+  open: 2,
+  listed: 1.5,
+};
+
 // ===== 育成モード API =====
 
 // 現在の育成馬を取得
@@ -228,6 +255,13 @@ async function apiEnterRace(race) {
   });
 }
 
+async function apiSaveHorseRaceResult(payload) {
+  return apiFetch('/api/horse/race-result', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 // 殿堂入り馬一覧を取得
 async function apiGetHallOfFame() {
   return apiFetch('/api/hall-of-fame');
@@ -279,25 +313,46 @@ function formatDistanceFit(distanceFit) {
   return map[distanceFit] ?? distanceFit;
 }
 
+function normalizeRaceGrade(raceGrade) {
+  return String(raceGrade || '').trim().toLowerCase();
+}
+
+function buildPrizeForTrainingRace(raceGrade, rank) {
+  const base = TRAINING_RACE_BASE_PRIZES[normalizeRaceGrade(raceGrade)] ?? 0;
+  if (rank === 1) return base;
+  if (rank === 2) return Math.floor(base * 0.4);
+  if (rank === 3) return Math.floor(base * 0.2);
+  return 0;
+}
+
+function buildExpForTrainingRace(raceGrade, rank) {
+  const base = rank === 1 ? 100 : rank === 2 ? 70 : rank === 3 ? 50 : rank === 4 ? 30 : rank === 5 ? 15 : 0;
+  const mult = TRAINING_RACE_EXP_MULTIPLIERS[normalizeRaceGrade(raceGrade)] ?? 1.0;
+  return Math.floor(base * mult);
+}
+
 // 馬カード（ベットフェーズ）
 // selectionIndex: null=未選択, 0/1/2=選択順（0始まり）
 // betType: 現在の賭け方（馬単/3連単のとき金銀銅バッジを表示）
 function HorseCard({ horse, selectionIndex, betType, onSelect }) {
   const badge = conditionBadge(horse.displayCondition);
   const isSelected = selectionIndex !== null;
+  const isPlayerHorse = Boolean(horse.isPlayerHorse);
   const useOrderedBadge = isSelected && (betType === '馬単' || betType === '3連単');
   const medalBadge = useOrderedBadge ? MEDAL_BADGES[selectionIndex] : null;
   return (
     <button
       type="button"
       onClick={() => onSelect(horse.id)}
-      className={`text-left bg-white rounded-2xl shadow-sm hover:shadow-md transition border-2 ${
+      className={`text-left rounded-2xl shadow-sm hover:shadow-md transition border-2 ${
         isSelected
           ? medalBadge
             ? `${medalBadge.border} ring-2 ring-orange-100`
             : 'border-accent ring-2 ring-orange-200'
-          : 'border-transparent'
-      } p-4 flex flex-col gap-2`}
+          : isPlayerHorse
+            ? 'border-emerald-400'
+            : 'border-transparent'
+      } ${isPlayerHorse ? 'bg-emerald-50' : 'bg-white'} p-4 flex flex-col gap-2`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -316,7 +371,7 @@ function HorseCard({ horse, selectionIndex, betType, onSelect }) {
           <span className="text-xs bg-slate-100 text-slate-700 rounded-full px-2 py-0.5">
             #{horse.id}
           </span>
-          <h3 className="font-bold text-slate-800">{horse.name}</h3>
+          <h3 className={`font-bold ${isPlayerHorse ? 'text-emerald-700' : 'text-slate-800'}`}>{horse.name}</h3>
         </div>
         <span className="text-accent font-bold">{horse.odds.toFixed(1)}倍</span>
       </div>
@@ -412,13 +467,14 @@ function RaceTrack({ raceState, betHorseIds, betType }) {
       {ordered.map((h, idx) => {
         const betIdx = betHorseIds.indexOf(h.id);
         const isBet = betIdx !== -1;
+        const isPlayerHorse = Boolean(h.isPlayerHorse);
         const medalBadge = isBet && useOrderedBadge ? MEDAL_BADGES[betIdx] : null;
         return (
           <div key={h.id} className="flex items-center gap-2">
             <span className="w-6 text-xs text-slate-400 text-right">{idx + 1}位</span>
             <span
               className={`w-36 truncate text-sm font-semibold flex items-center gap-1 ${
-                isBet ? 'text-accent' : 'text-slate-700'
+                isPlayerHorse ? 'text-emerald-700' : isBet ? 'text-accent' : 'text-slate-700'
               }`}
             >
               {medalBadge ? (
@@ -436,7 +492,7 @@ function RaceTrack({ raceState, betHorseIds, betType }) {
             <div className="flex-1 h-4 bg-slate-100 rounded-full overflow-hidden relative">
               <div
                 className={`h-full ${
-                  isBet ? 'bg-accent' : 'bg-slate-400'
+                  isPlayerHorse ? 'bg-emerald-500' : isBet ? 'bg-accent' : 'bg-slate-400'
                 }`}
                 style={{ width: `${Math.min(100, h.position)}%`, transition: 'width 150ms linear' }}
               />
@@ -471,6 +527,7 @@ function ResultList({ ranking, betHorseIds, betType }) {
         {ranking.map((h) => {
           const betIdx = betHorseIds.indexOf(h.id);
           const isBet = betIdx !== -1;
+          const isPlayerHorse = Boolean(h.isPlayerHorse);
           const medalBadge = isBet && useOrderedBadge ? MEDAL_BADGES[betIdx] : null;
           const badge = conditionBadge(h.displayCondition);
 
@@ -487,7 +544,7 @@ function ResultList({ ranking, betHorseIds, betType }) {
             <li
               key={h.id}
               className={`flex items-center justify-between text-sm py-1 px-2 rounded ${
-                isBet ? 'bg-orange-50' : ''
+                isPlayerHorse ? 'bg-emerald-100' : isBet ? 'bg-orange-50' : ''
               }`}
             >
               <span className="flex items-center gap-2">
@@ -503,7 +560,7 @@ function ResultList({ ranking, betHorseIds, betType }) {
                     {h.rank}
                   </span>
                 )}
-                <span className={`font-semibold ${isBet ? 'text-accent' : 'text-slate-700'}`}>
+                <span className={`font-semibold ${isPlayerHorse ? 'text-emerald-700' : isBet ? 'text-accent' : 'text-slate-700'}`}>
                   {medalBadge ? (
                     <span
                       className={`inline-flex items-center justify-center text-xs ${medalBadge.bg} ${medalBadge.text} rounded-full w-5 h-5 mr-1 font-bold`}
@@ -905,7 +962,7 @@ function LoginPage({ onAuth }) {
 // ===== 育成モード =====
 // coins / setCoins: 親Pageから受け取るコイン状態
 // authUser: 認証済みユーザー情報
-function TrainingMode({ coins, setCoins, authUser }) {
+function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
   // タブ管理
   const [activeTab, setActiveTab] = useState('myHorse'); // myHorse | gacha | train | race | hallOfFame
   // 育成馬
@@ -1039,6 +1096,7 @@ function TrainingMode({ coins, setCoins, authUser }) {
       const data = await apiRetireHorse(inheritType);
       setRetireResultData(data);
       setCurrentHorse(null);
+      onRaceEntryRegistered(null);
       setRetireModal('inherit_name');
     } catch (err) {
       setError(err.message);
@@ -1055,6 +1113,7 @@ function TrainingMode({ coins, setCoins, authUser }) {
     try {
       const data = await apiInheritHorse(retireResultData, inheritName.trim());
       setCurrentHorse(data.horse ?? null);
+      onRaceEntryRegistered(null);
       setRetireModal(false);
       setRetireResultData(null);
       setInheritName('');
@@ -1072,6 +1131,7 @@ function TrainingMode({ coins, setCoins, authUser }) {
     try {
       await apiDeleteHorse();
       setCurrentHorse(null);
+      onRaceEntryRegistered(null);
       setDeleteModal(false);
     } catch (err) {
       setError(err.message);
@@ -1140,14 +1200,27 @@ function TrainingMode({ coins, setCoins, authUser }) {
     setEnterLoading(true);
     setError('');
     try {
-      const data = await apiEnterRace(race);
-      if (data.prize) {
-        const newCoins = coins + data.prize;
-        setCoins(newCoins);
-        if (authUser) apiUpdateCoins(newCoins).catch(() => {});
-      }
-      if (data.horse) setCurrentHorse(data.horse);
-      setRaceResult(data);
+      const payload = {
+        raceName: race.name,
+        raceGrade: race.grade ?? null,
+        distance: race.distance,
+        trackType: race.track ?? race.trackType,
+      };
+      const data = await apiEnterRace(payload);
+      onRaceEntryRegistered({
+        raceName: data.raceName ?? payload.raceName,
+        raceGrade: data.raceGrade ?? payload.raceGrade ?? 'open',
+        distance: payload.distance,
+        trackType: payload.trackType,
+        horse: currentHorse,
+      });
+      setRaceResult({
+        message: `「${payload.raceName}」に出走登録しました。次のレースで出走します。`,
+        rank: null,
+        prize: 0,
+        expGained: 0,
+        response: data,
+      });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -1929,6 +2002,8 @@ export default function Page() {
   const [ranking, setRanking] = useState([]);
   const [lastPayout, setLastPayout] = useState(0);
   const [lastBet, setLastBet] = useState({ horseIds: [], betType: '単勝', amount: 0, odds: 0 });
+  const [registeredRaceEntry, setRegisteredRaceEntry] = useState(null);
+  const [trainedRaceResult, setTrainedRaceResult] = useState(null);
   const timerRef = useRef(null);
 
   // 認証状態
@@ -1959,10 +2034,24 @@ export default function Page() {
       });
   }, []);
 
+  useEffect(() => {
+    const modulePath = '../utils/race-horse-pool.js';
+    import(/* @vite-ignore */ modulePath)
+      .then((mod) => {
+        if (typeof mod.generateNPCHorses === 'function') {
+          setNPCHorseGenerator(mod.generateNPCHorses);
+        }
+      })
+      .catch(() => {
+      });
+  }, []);
+
   // ログイン・登録成功時
   const handleAuth = useCallback((user) => {
     setAuthUser(user);
     setCoins(user.coins);
+    setRegisteredRaceEntry(null);
+    setTrainedRaceResult(null);
     setScreen('game');
     setShowAuth(false);
   }, []);
@@ -1972,6 +2061,8 @@ export default function Page() {
     localStorage.removeItem('token');
     setAuthUser(null);
     setCoins(INITIAL_COINS);
+    setRegisteredRaceEntry(null);
+    setTrainedRaceResult(null);
     setScreen('auth');
   }, []);
 
@@ -1981,6 +2072,10 @@ export default function Page() {
     [betType]
   );
   const requiredCount = betTypeInfo.horseCount;
+  const hasPlayerHorseInRace = useMemo(
+    () => horses.some((horse) => horse.isPlayerHorse),
+    [horses]
+  );
 
   // 賭け方変更時に選択をリセット
   const handleBetTypeChange = useCallback((key) => {
@@ -2020,13 +2115,16 @@ export default function Page() {
 
   // ベット額バリデーション
   const canStart = useMemo(() => {
+    if (hasPlayerHorseInRace) {
+      return phase === 'betting';
+    }
     return (
       selectedHorseIds.length === requiredCount &&
       betAmount >= MIN_BET &&
       betAmount <= coins &&
       phase === 'betting'
     );
-  }, [selectedHorseIds, requiredCount, betAmount, coins, phase]);
+  }, [selectedHorseIds, requiredCount, betAmount, coins, phase, hasPlayerHorseInRace]);
 
   // クイックベット
   const handleQuickBet = useCallback(
@@ -2041,10 +2139,44 @@ export default function Page() {
   );
 
   // 新しいレースを準備
-  const prepareNewRace = useCallback(() => {
-    const newConfig = generateRaceConfig();
+  const prepareNewRace = useCallback(async () => {
+    let nextRaceDistance = null;
+    let nextRaceTrack = null;
+    let registeredHorse = registeredRaceEntry?.horse ?? null;
+    const raceMeta = registeredRaceEntry ?? { raceGrade: 'open', raceName: 'フィクションレース' };
+    if (authUser) {
+      try {
+        const user = await apiGetUser();
+        nextRaceDistance = user.next_race_distance;
+        nextRaceTrack = user.next_race_track;
+      } catch {
+      }
+    }
+    if (!registeredHorse && Number.isInteger(nextRaceDistance) && (nextRaceTrack === 'turf' || nextRaceTrack === 'dirt')) {
+      try {
+        const horseData = await apiGetHorse();
+        registeredHorse = horseData?.horse ?? null;
+      } catch {
+        registeredHorse = null;
+      }
+    }
+    const shouldUseRegisteredRace = Boolean(
+      registeredHorse &&
+      Number.isInteger(nextRaceDistance) &&
+      (nextRaceTrack === 'turf' || nextRaceTrack === 'dirt')
+    );
+    const newConfig = shouldUseRegisteredRace
+      ? buildRaceConfigByConditions(nextRaceDistance, nextRaceTrack)
+      : generateRaceConfig();
+    const raceHorses = shouldUseRegisteredRace
+      ? generateRaceHorses(
+        raceMeta.raceGrade,
+        raceMeta.raceName,
+        registeredHorse
+      )
+      : generateHorses(HORSE_COUNT);
     setRaceConfig(newConfig);
-    setHorses(calculateOdds(generateHorses(HORSE_COUNT)));
+    setHorses(calculateOdds(raceHorses));
     setBetType('単勝');
     setSelectedHorseIds([]);
     setBetAmount(MIN_BET);
@@ -2052,9 +2184,10 @@ export default function Page() {
     setStepIndex(0);
     setRanking([]);
     setLastPayout(0);
+    setTrainedRaceResult(null);
     setIsDebugRace(false);
     setPhase('betting');
-  }, []);
+  }, [authUser, registeredRaceEntry]);
 
   // 所持コインリセット
   const handleReset = useCallback(() => {
@@ -2065,6 +2198,12 @@ export default function Page() {
     }
     prepareNewRace();
   }, [prepareNewRace, authUser]);
+
+  useEffect(() => {
+    if (appMode === 'bet' && phase === 'betting' && registeredRaceEntry) {
+      prepareNewRace();
+    }
+  }, [appMode, phase, registeredRaceEntry, prepareNewRace]);
 
   // デバッグレース開始（全脚質・同一ステータス・最高調子で脚質の動きを確認）
   const handleDebugRace = useCallback(() => {
@@ -2086,6 +2225,14 @@ export default function Page() {
   // レース開始
   const handleStartRace = useCallback(() => {
     if (!canStart) return;
+    if (hasPlayerHorseInRace) {
+      setLastBet({ horseIds: [], betType: '単勝', amount: 0, odds: 0 });
+      setLastPayout(0);
+      setRaceState(initRaceState(horses, raceConfig));
+      setStepIndex(0);
+      setPhase('racing');
+      return;
+    }
     const betOdds = calculateBetOdds(horses, betType, selectedHorseIds);
     setCoins((c) => c - betAmount);
     setLastBet({
@@ -2097,7 +2244,7 @@ export default function Page() {
     setRaceState(initRaceState(horses, raceConfig));
     setStepIndex(0);
     setPhase('racing');
-  }, [canStart, betType, selectedHorseIds, betAmount, horses, raceConfig]);
+  }, [canStart, hasPlayerHorseInRace, betType, selectedHorseIds, betAmount, horses, raceConfig]);
 
   // レース中のループ
   useEffect(() => {
@@ -2119,37 +2266,72 @@ export default function Page() {
       if (isRaceFinished(next, stepIndex)) {
         const ranked = rankHorses(next);
         setRanking(ranked);
-        // 払戻判定（デバッグレースはコイン増減・API記録をスキップ）
-        let payout = 0;
-        if (!isDebugRace && isWinningBetType(ranked, lastBet.betType, lastBet.horseIds)) {
-          payout = calcPayout(lastBet.amount, lastBet.odds);
-          setLastPayout(payout);
-          setCoins((c) => {
-            const newCoins = c + payout;
-            // ログイン中はAPIでコイン同期・払戻記録
-            if (authUser) {
-              apiUpdateCoins(newCoins).catch(() => {});
-              apiRecordBet(lastBet.betType, lastBet.amount, payout, lastBet.odds).catch(() => {});
-            }
-            return newCoins;
-          });
-        } else if (!isDebugRace) {
+        if (!isDebugRace && !hasPlayerHorseInRace) {
+          let payout = 0;
+          if (isWinningBetType(ranked, lastBet.betType, lastBet.horseIds)) {
+            payout = calcPayout(lastBet.amount, lastBet.odds);
+            setLastPayout(payout);
+            setCoins((c) => {
+              const newCoins = c + payout;
+              if (authUser) {
+                apiUpdateCoins(newCoins).catch(() => {});
+                apiRecordBet(lastBet.betType, lastBet.amount, payout, lastBet.odds).catch(() => {});
+              }
+              return newCoins;
+            });
+          } else {
+            setLastPayout(0);
+            setCoins((c) => {
+              if (authUser) {
+                apiUpdateCoins(c).catch(() => {});
+                apiRecordBet(lastBet.betType, lastBet.amount, 0, lastBet.odds).catch(() => {});
+              }
+              return c;
+            });
+          }
+        } else {
           setLastPayout(0);
-          // 外れの場合もコイン同期・記録（payout=0）
-          setCoins((c) => {
-            if (authUser) {
-              apiUpdateCoins(c).catch(() => {});
-              apiRecordBet(lastBet.betType, lastBet.amount, 0, lastBet.odds).catch(() => {});
-            }
-            return c;
-          });
+        }
+        if (!isDebugRace && hasPlayerHorseInRace && registeredRaceEntry && authUser) {
+          const playerHorse = ranked.find((horse) => horse.isPlayerHorse);
+          if (playerHorse) {
+            const prize = buildPrizeForTrainingRace(registeredRaceEntry.raceGrade, playerHorse.rank);
+            const expGained = buildExpForTrainingRace(registeredRaceEntry.raceGrade, playerHorse.rank);
+            setTrainedRaceResult({
+              rank: playerHorse.rank,
+              prize,
+              expGained,
+              raceName: registeredRaceEntry.raceName,
+              raceGrade: registeredRaceEntry.raceGrade,
+              levelUp: false,
+            });
+            apiSaveHorseRaceResult({
+              rank: playerHorse.rank,
+              prize,
+              expGained,
+              raceName: registeredRaceEntry.raceName,
+              raceGrade: registeredRaceEntry.raceGrade,
+              distance: raceConfig.distance,
+              trackType: raceConfig.trackType,
+            })
+              .then((saved) => {
+                if (saved?.user?.coins != null) {
+                  setCoins(saved.user.coins);
+                }
+                setTrainedRaceResult((prevResult) =>
+                  prevResult ? { ...prevResult, levelUp: Boolean(saved?.levelUp), horse: saved?.horse ?? null } : prevResult
+                );
+                setRegisteredRaceEntry(null);
+              })
+              .catch(() => {});
+          }
         }
         setPhase('result');
         if (timerRef.current) clearInterval(timerRef.current);
       }
       return next;
     });
-  }, [stepIndex, phase, lastBet, authUser, isDebugRace]);
+  }, [stepIndex, phase, lastBet, authUser, isDebugRace, hasPlayerHorseInRace, registeredRaceEntry, raceConfig]);
 
   // 選択中の馬の表示文字列
   const selectionLabel = useMemo(() => {
@@ -2160,6 +2342,10 @@ export default function Page() {
     });
     return names.join(' → ');
   }, [selectedHorseIds, horses]);
+
+  const handleRaceEntryRegistered = useCallback((entry) => {
+    setRegisteredRaceEntry(entry ?? null);
+  }, []);
 
   // ヘッダー
   const Header = (
@@ -2268,7 +2454,12 @@ export default function Page() {
       <main className="max-w-6xl mx-auto px-4 py-6">
         {/* 育成モード */}
         {appMode === 'train' && (
-          <TrainingMode coins={coins} setCoins={setCoins} authUser={authUser} />
+          <TrainingMode
+            coins={coins}
+            setCoins={setCoins}
+            authUser={authUser}
+            onRaceEntryRegistered={handleRaceEntryRegistered}
+          />
         )}
 
         {/* 馬券モード（非表示時もDOMを保持してstate・アニメを維持） */}
@@ -2281,27 +2472,34 @@ export default function Page() {
                 <RaceInfoBanner raceConfig={raceConfig} />
               </div>
 
-              {/* 賭け方選択タブ */}
-              <div className="flex flex-wrap gap-1 mb-4">
-                {BET_TYPES.map((bt) => (
-                  <button
-                    key={bt.key}
-                    type="button"
-                    onClick={() => handleBetTypeChange(bt.key)}
-                    className={`px-3 py-1.5 text-sm rounded-lg font-semibold transition ${
-                      betType === bt.key
-                        ? 'bg-accent text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    {bt.label}
-                  </button>
-                ))}
-              </div>
+              {!hasPlayerHorseInRace && (
+                <div className="flex flex-wrap gap-1 mb-4">
+                  {BET_TYPES.map((bt) => (
+                    <button
+                      key={bt.key}
+                      type="button"
+                      onClick={() => handleBetTypeChange(bt.key)}
+                      className={`px-3 py-1.5 text-sm rounded-lg font-semibold transition ${
+                        betType === bt.key
+                          ? 'bg-accent text-white'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {bt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {hasPlayerHorseInRace && (
+                <div className="mb-4 bg-emerald-100 border border-emerald-300 text-emerald-800 text-sm rounded-xl px-3 py-2">
+                  育成馬が出走中のため、このレースでは馬券を購入できません。
+                </div>
+              )}
 
               <h2 className="text-base font-bold text-slate-800 mb-3">
-                出走表（{betType}予想）
-                {betTypeInfo.horseCount > 1 && (
+                出走表（{hasPlayerHorseInRace ? '育成馬出走レース' : `${betType}予想`}）
+                {!hasPlayerHorseInRace && betTypeInfo.horseCount > 1 && (
                   <span className="ml-2 text-xs font-normal text-slate-500">
                     — {betTypeInfo.horseCount}頭を順番に選択
                     {(betType === '馬単' || betType === '3連単') ? '（選択順が着順）' : '（順不同）'}
@@ -2323,6 +2521,7 @@ export default function Page() {
                 })}
               </div>
 
+              {!hasPlayerHorseInRace ? (
               <div className="bg-white rounded-2xl shadow-sm p-4 mt-4 flex flex-col gap-3">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="text-sm text-slate-600">
@@ -2401,6 +2600,22 @@ export default function Page() {
                   <p className="text-xs text-rose-500">最低ベットは {MIN_BET}C です</p>
                 )}
               </div>
+              ) : (
+              <div className="bg-white rounded-2xl shadow-sm p-4 mt-4 flex flex-col gap-3">
+                <div className="text-sm text-slate-600">
+                  育成馬の着順に応じて賞金とEXPが加算されます。
+                </div>
+                <button
+                  type="button"
+                  disabled={!canStart}
+                  onClick={handleStartRace}
+                  className="mt-1 inline-flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-3 rounded-xl transition"
+                >
+                  <Play className="w-4 h-4" />
+                  レース開始
+                </button>
+              </div>
+              )}
             </section>
             <aside>
               <StyleGuide />
@@ -2447,6 +2662,22 @@ export default function Page() {
                 <>
                   <p className="text-2xl font-bold text-purple-700">🐛 デバッグレース完了</p>
                   <p className="mt-2 text-slate-500">全脚質の動きを確認しました</p>
+                </>
+              ) : hasPlayerHorseInRace ? (
+                <>
+                  <p className="text-2xl font-bold text-emerald-700">🐴 育成馬レース完了</p>
+                  {trainedRaceResult ? (
+                    <div className="mt-3 space-y-1 text-sm text-slate-700">
+                      <p>着順: <span className="font-bold text-emerald-700">{trainedRaceResult.rank}着</span></p>
+                      <p>獲得賞金: <span className="font-bold text-amber-600">+{trainedRaceResult.prize.toLocaleString()}C</span></p>
+                      <p>獲得EXP: <span className="font-bold text-blue-600">+{trainedRaceResult.expGained}</span></p>
+                      {trainedRaceResult.levelUp && (
+                        <p className="font-bold text-purple-700">レベルアップしました！</p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-slate-500">結果を集計中です...</p>
+                  )}
                 </>
               ) : lastPayout > 0 ? (
                 <p className="text-2xl font-bold text-accent">
