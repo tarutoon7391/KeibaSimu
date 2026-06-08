@@ -191,9 +191,9 @@ async function apiGetHorse() {
 
 // ガチャを引く（gachaType: キー名, count: 1 or 10）
 async function apiGacha(gachaType, count) {
-  return apiFetch('/api/horse/gacha', {
+  return apiFetch('/api/gacha', {
     method: 'POST',
-    body: JSON.stringify({ gacha_type: gachaType, count }),
+    body: JSON.stringify({ gachaType, count }),
   });
 }
 
