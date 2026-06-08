@@ -1395,7 +1395,10 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
     setRetireLoading(true);
     try {
       const data = await apiInheritHorse(retireResultData, inheritName.trim());
-      setCurrentHorse(normalizeHorseData(data.horse ?? null));
+      const inheritedHorse = data?.horse ?? data?.trainedHorse ?? data ?? null;
+      setCurrentHorse(normalizeHorseData(inheritedHorse));
+      const latestHorse = await apiGetHorse();
+      setCurrentHorse(normalizeHorseData(latestHorse?.horse ?? null));
       onRaceEntryRegistered(null);
       setRetireModal(false);
       setRetireResultData(null);
