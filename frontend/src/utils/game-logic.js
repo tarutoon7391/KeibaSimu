@@ -34,6 +34,28 @@ export const MIN_ODDS = 1.1;
 
 // ---------- ステータス変換テーブル ----------
 export const STATUS_TABLE = { E: 70, D: 73, C: 76, B: 80, A: 84, S: 88, SS: 93, SSS: 97 };
+export const TRAINED_RANK_TO_STAT = [
+  70, 71, 72,
+  73, 74, 75,
+  76, 77, 78,
+  80, 81, 82,
+  84, 85, 86,
+  88, 89, 90,
+  93, 94, 95,
+  97, 98, 99,
+  100, 101, 102,
+];
+const TRAINED_RANK_LABELS = [
+  'E-', 'E', 'E+',
+  'D-', 'D', 'D+',
+  'C-', 'C', 'C+',
+  'B-', 'B', 'B+',
+  'A-', 'A', 'A+',
+  'S-', 'S', 'S+',
+  'SS-', 'SS', 'SS+',
+  'SSS-', 'SSS', 'SSS+',
+  'Z-', 'Z', 'Z+',
+];
 
 // ---------- レース条件 ----------
 export const RACE_COURSES = ['short', 'mile', 'long'];
@@ -161,6 +183,17 @@ function convertGrade(grade) {
 
 // distanceFit 文字列から適性レンジ（min/max）を返す
 function getDistanceRange(distanceFit) {
+  if (
+    distanceFit &&
+    typeof distanceFit === 'object' &&
+    Number.isFinite(distanceFit.min) &&
+    Number.isFinite(distanceFit.max)
+  ) {
+    return {
+      min: clamp(Number(distanceFit.min), 1000, 3200),
+      max: clamp(Number(distanceFit.max), 1000, 3200),
+    };
+  }
   const map = {
     'short':      { min: 1000, max: 1600 },
     'mile':       { min: 1600, max: 2400 },
@@ -240,6 +273,148 @@ export function generateRaceConfig() {
 // 出走馬一覧を生成する（プールから抽出）
 export function generateHorses(count = HORSE_COUNT) {
   return selectHorsesFromPool(count);
+}
+
+function normalizeRaceGrade(raceGrade) {
+  return String(raceGrade || '').trim().toLowerCase();
+}
+
+let externalNPCHorseGenerator = null;
+
+export function setNPCHorseGenerator(generator) {
+  externalNPCHorseGenerator = typeof generator === 'function' ? generator : null;
+}
+
+function fallbackGenerateNPCHorses(raceGrade, _raceName, count = 7) {
+  const grade = normalizeRaceGrade(raceGrade);
+  const baseRank = grade === 'g1' ? 16 : grade === 'g2' ? 14 : grade === 'g3' ? 12 : grade === 'open' ? 10 : 8;
+  return Array.from({ length: count }, (_, index) => ({
+    name: `NPC-${index + 1}`,
+    speed: clamp(baseRank + Math.floor(Math.random() * 3) - 1, 0, 26),
+    stamina: clamp(baseRank + Math.floor(Math.random() * 3) - 1, 0, 26),
+    stability: clamp(baseRank + Math.floor(Math.random() * 3) - 1, 0, 26),
+    burst: clamp(baseRank + Math.floor(Math.random() * 3) - 1, 0, 26),
+    runningStyle: RUNNING_STYLE_NAMES[Math.floor(Math.random() * RUNNING_STYLE_NAMES.length)],
+  }));
+}
+
+function normalizeTrackType(trackType) {
+  const raw = String(trackType || '').trim().toLowerCase();
+  if (raw === 'turf' || raw === '芝') return 'turf';
+  if (raw === 'dirt' || raw === 'ダート') return 'dirt';
+  return null;
+}
+
+function resolveCourseType(distance) {
+  if (distance <= 1400) return 'short';
+  if (distance <= 1800) return 'mile';
+  return 'long';
+}
+
+function rankToStat(rank) {
+  const idx = clamp(Number.isFinite(rank) ? Math.floor(rank) : 0, 0, TRAINED_RANK_TO_STAT.length - 1);
+  return TRAINED_RANK_TO_STAT[idx];
+}
+
+function rankToLabel(rank) {
+  const idx = clamp(Number.isFinite(rank) ? Math.floor(rank) : 0, 0, TRAINED_RANK_LABELS.length - 1);
+  return TRAINED_RANK_LABELS[idx];
+}
+
+function createHorseFromRanks({
+  id,
+  name,
+  speedRank,
+  staminaRank,
+  stabilityRank,
+  burstRank,
+  turfFitRank,
+  dirtFitRank,
+  runningStyle = '先行',
+  distanceFit = 'all',
+  isPlayerHorse = false,
+}) {
+  const trueCondition = Math.random();
+  const displayCondition = clamp(trueCondition + gaussianNoise(0, 0.35), 0, 1);
+  return {
+    id,
+    name,
+    speed: rankToStat(speedRank),
+    stamina: rankToStat(staminaRank),
+    stability: rankToStat(stabilityRank),
+    burst: rankToStat(burstRank),
+    turfFit: rankToStat(turfFitRank),
+    dirtFit: rankToStat(dirtFitRank),
+    speedGrade: rankToLabel(speedRank),
+    staminaGrade: rankToLabel(staminaRank),
+    stabilityGrade: rankToLabel(stabilityRank),
+    burstGrade: rankToLabel(burstRank),
+    turfFitGrade: rankToLabel(turfFitRank),
+    dirtFitGrade: rankToLabel(dirtFitRank),
+    distanceFit,
+    runningStyle,
+    trueCondition,
+    displayCondition,
+    isPlayerHorse,
+  };
+}
+
+export function buildRaceConfigByConditions(distance, trackType) {
+  const normalizedDistance = Number.isInteger(distance) ? clamp(distance, 1000, 3200) : null;
+  const normalizedTrackType = normalizeTrackType(trackType);
+  if (normalizedDistance == null && !normalizedTrackType) {
+    return generateRaceConfig();
+  }
+  const courseType = resolveCourseType(normalizedDistance ?? 1600);
+  const opts = DISTANCE_OPTIONS[courseType] ?? DISTANCE_OPTIONS.mile;
+  return {
+    courseType,
+    trackType: normalizedTrackType ?? RACE_TRACKS[Math.floor(Math.random() * RACE_TRACKS.length)],
+    distance: normalizedDistance ?? opts[Math.floor(Math.random() * opts.length)],
+  };
+}
+
+export function convertTrainedHorseToRaceHorse(trainedHorse, id = HORSE_COUNT) {
+  return createHorseFromRanks({
+    id,
+    name: trainedHorse.name,
+    speedRank: trainedHorse.speed_rank,
+    staminaRank: trainedHorse.stamina_rank,
+    stabilityRank: trainedHorse.stability_rank,
+    burstRank: trainedHorse.burst_rank,
+    turfFitRank: trainedHorse.turf_fit_rank,
+    dirtFitRank: trainedHorse.dirt_fit_rank,
+    runningStyle: trainedHorse.running_style || '先行',
+    distanceFit: {
+      min: trainedHorse.distance_min ?? 1000,
+      max: trainedHorse.distance_max ?? 3200,
+    },
+    isPlayerHorse: true,
+  });
+}
+
+export function generateRaceHorses(raceGrade, raceName, trainedHorse, count = HORSE_COUNT) {
+  if (!trainedHorse) {
+    return generateHorses(count);
+  }
+  const npcCount = Math.max(0, count - 1);
+  const npcGenerator = externalNPCHorseGenerator || fallbackGenerateNPCHorses;
+  const npcHorses = npcGenerator(normalizeRaceGrade(raceGrade), raceName, npcCount).map((horse, index) =>
+    createHorseFromRanks({
+      id: index + 1,
+      name: horse.name,
+      speedRank: horse.speed,
+      staminaRank: horse.stamina,
+      stabilityRank: horse.stability,
+      burstRank: horse.burst,
+      turfFitRank: horse.stability,
+      dirtFitRank: horse.stability,
+      runningStyle: horse.runningStyle || '先行',
+      distanceFit: 'all',
+      isPlayerHorse: false,
+    })
+  );
+  return [...npcHorses, convertTrainedHorseToRaceHorse(trainedHorse, count)];
 }
 
 // ---------- 調子バッジ ----------

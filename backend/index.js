@@ -108,9 +108,9 @@ const TARGET_TO_COLUMNS = {
   distance_max: { rank: 'distance_max', growth: 'distance_max_growth' },
 };
 const EXPERIENCE_REQUIREMENTS = [
-  200, 222, 244, 266, 288, 310, 332, 354, 376, 398,
-  700, 780, 860, 940, 1020, 1100, 1180, 1260, 1340, 1420,
-  800, 890, 980, 1070, 1160, 1250, 1340, 1430, 1520,
+  333, 333, 333, 333, 333, 333, 333, 333, 336,
+  700, 700, 700, 700, 700, 700, 700, 700, 700, 700,
+  1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000,
 ];
 const EXP_MULTIPLIERS = {
   g1: 10,
@@ -346,7 +346,9 @@ async function updateHorse(client, horseId, fields) {
 async function getUserById(client, userId, forUpdate = false) {
   const suffix = forUpdate ? ' FOR UPDATE' : '';
   const { rows } = await client.query(
-    `SELECT id, username, coins, current_week, total_prize FROM users WHERE id = $1${suffix}`,
+    `SELECT id, username, coins, current_week, total_prize, next_race_distance, next_race_track
+       FROM users
+      WHERE id = $1${suffix}`,
     [userId]
   );
   return rows[0] || null;
@@ -400,7 +402,10 @@ async function deductCoins(client, userId, amount) {
     throw createHttpError(400, 'コインが不足しています');
   }
   const { rows } = await client.query(
-    'UPDATE users SET coins = coins - $1 WHERE id = $2 RETURNING id, username, coins, current_week, total_prize',
+    `UPDATE users
+        SET coins = coins - $1
+      WHERE id = $2
+      RETURNING id, username, coins, current_week, total_prize, next_race_distance, next_race_track`,
     [amount, userId]
   );
   return rows[0];
@@ -835,7 +840,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, username, coins FROM users WHERE id = $1',
+      'SELECT id, username, coins, next_race_distance, next_race_track FROM users WHERE id = $1',
       [req.userId]
     );
     if (rows.length === 0) {
@@ -845,6 +850,21 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'ユーザー情報の取得に失敗しました' });
+  }
+});
+
+app.get('/api/user', authMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const user = await getUserById(client, req.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'ユーザーが見つかりません' });
+    }
+    res.json(user);
+  } catch (err) {
+    handleApiError(res, err, 'ユーザー情報の取得に失敗しました');
+  } finally {
+    client.release();
   }
 });
 
@@ -1063,6 +1083,23 @@ app.get('/api/horse', authMiddleware, async (req, res) => {
     const syncedHorse = await syncHorseRaceStats(client, horse.id);
     await syncUserTotalPrize(client, req.userId);
     res.json(syncedHorse);
+  } catch (err) {
+    handleApiError(res, err, '育成馬の取得に失敗しました');
+  } finally {
+    client.release();
+  }
+});
+
+app.get('/api/horse/me', authMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const horse = await getActiveHorse(client, req.userId);
+    if (!horse) {
+      return res.json({ horse: null });
+    }
+    const syncedHorse = await syncHorseRaceStats(client, horse.id);
+    await syncUserTotalPrize(client, req.userId);
+    res.json({ horse: syncedHorse });
   } catch (err) {
     handleApiError(res, err, '育成馬の取得に失敗しました');
   } finally {
@@ -1529,9 +1566,6 @@ app.post('/api/horse/enter', authMiddleware, async (req, res) => {
   if (!raceName || typeof raceName !== 'string') {
     return res.status(400).json({ error: 'raceName は必須です' });
   }
-  if (!normalizedRaceGrade) {
-    return res.status(400).json({ error: '無効な raceGrade です' });
-  }
   if (!Number.isInteger(distance) || distance < 1000 || distance > 3200) {
     return res.status(400).json({ error: 'distance は1000〜3200の整数である必要があります' });
   }
@@ -1547,35 +1581,138 @@ app.post('/api/horse/enter', authMiddleware, async (req, res) => {
     }
     horse = await syncHorseRaceStats(client, horse.id);
     const availableGrades = determineAvailableRaceGrades(horse);
-    if (!availableGrades.includes(normalizedRaceGrade)) {
+    const selectedRaceGrade = normalizedRaceGrade || availableGrades[0];
+    if (!selectedRaceGrade) {
+      throw createHttpError(400, '出走可能なレースグレードがありません');
+    }
+    if (!availableGrades.includes(selectedRaceGrade)) {
       throw createHttpError(400, 'そのレースグレードにはまだ出走できません');
     }
-    const { rows: raceRows } = await client.query(
-      'SELECT id, held_at, created_at FROM races ORDER BY id DESC LIMIT 1 FOR UPDATE'
-    );
-    if (raceRows.length === 0) {
-      throw createHttpError(404, '進行中のレースが見つかりません');
-    }
-    const currentRace = raceRows[0];
-    const { rows: existingRows } = await client.query(
-      'SELECT id FROM horse_race_results WHERE horse_id = $1 AND race_id = $2 LIMIT 1',
-      [horse.id, currentRace.id]
-    );
-    if (existingRows.length > 0) {
-      throw createHttpError(400, '既にこのレースへ登録済みです');
-    }
     const { rows } = await client.query(
-      `INSERT INTO horse_race_results (
-        horse_id, user_id, race_id, race_grade, race_name, distance, track_type, rank, prize, exp_gained
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0)
-      RETURNING *`,
-      [horse.id, req.userId, currentRace.id, normalizedRaceGrade, raceName.trim(), distance, normalizedTrackType]
+      `UPDATE users
+          SET next_race_distance = $1,
+              next_race_track = $2
+        WHERE id = $3
+        RETURNING id, username, coins, current_week, total_prize, next_race_distance, next_race_track`,
+      [distance, normalizedTrackType, req.userId]
     );
+    if (rows.length === 0) {
+      throw createHttpError(404, 'ユーザーが見つかりません');
+    }
     await client.query('COMMIT');
-    res.status(201).json(rows[0]);
+    res.status(201).json({
+      message: '出走登録が完了しました',
+      raceName: raceName.trim(),
+      raceGrade: selectedRaceGrade,
+      distance,
+      trackType: normalizedTrackType,
+      horse,
+      user: rows[0],
+    });
   } catch (err) {
     await client.query('ROLLBACK');
     handleApiError(res, err, 'レース登録に失敗しました');
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/horse/race-result', authMiddleware, async (req, res) => {
+  const {
+    rank,
+    prize,
+    expGained,
+    raceName,
+    raceGrade,
+    distance,
+    trackType,
+  } = req.body || {};
+  const normalizedRaceGrade = normalizeRaceGrade(raceGrade);
+  const normalizedTrackType = normalizeTrackType(trackType);
+
+  if (!raceName || typeof raceName !== 'string') {
+    return res.status(400).json({ error: 'raceName は必須です' });
+  }
+  if (!normalizedRaceGrade) {
+    return res.status(400).json({ error: '無効な raceGrade です' });
+  }
+  if (!Number.isInteger(rank) || rank < 1 || rank > 8) {
+    return res.status(400).json({ error: 'rank は1〜8の整数である必要があります' });
+  }
+  if (!Number.isInteger(prize) || prize < 0) {
+    return res.status(400).json({ error: 'prize は0以上の整数である必要があります' });
+  }
+  if (!Number.isInteger(expGained) || expGained < 0) {
+    return res.status(400).json({ error: 'expGained は0以上の整数である必要があります' });
+  }
+  if (!Number.isInteger(distance) || distance < 1000 || distance > 3200) {
+    return res.status(400).json({ error: 'distance は1000〜3200の整数である必要があります' });
+  }
+  if (!normalizedTrackType) {
+    return res.status(400).json({ error: '無効な trackType です' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const horse = await getActiveHorse(client, req.userId, true);
+    if (!horse) {
+      throw createHttpError(404, '育成馬が見つかりません');
+    }
+    const user = await getUserById(client, req.userId, true);
+    if (!user) {
+      throw createHttpError(404, 'ユーザーが見つかりません');
+    }
+
+    const beforeLevel = horse.level || 1;
+    const { rows: raceRows } = await client.query(
+      'INSERT INTO races (held_at) VALUES (NOW()) RETURNING id, held_at, created_at'
+    );
+    const createdRace = raceRows[0];
+
+    const { rows: resultRows } = await client.query(
+      `INSERT INTO horse_race_results (
+        horse_id, user_id, race_id, race_grade, race_name, distance, track_type, rank, prize, exp_gained
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING *`,
+      [
+        horse.id,
+        req.userId,
+        createdRace.id,
+        normalizedRaceGrade,
+        raceName.trim(),
+        distance,
+        normalizedTrackType,
+        rank,
+        prize,
+        expGained,
+      ]
+    );
+
+    const syncedHorse = await syncHorseRaceStats(client, horse.id);
+    const levelUp = (syncedHorse.level || 1) > beforeLevel;
+
+    await client.query(
+      `UPDATE users
+          SET coins = coins + $1,
+              next_race_distance = NULL,
+              next_race_track = NULL
+        WHERE id = $2`,
+      [prize, req.userId]
+    );
+    await syncUserTotalPrize(client, req.userId);
+    const updatedUser = await getUserById(client, req.userId);
+
+    await client.query('COMMIT');
+    res.json({
+      levelUp,
+      horse: syncedHorse,
+      user: updatedUser,
+      raceResult: resultRows[0],
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    handleApiError(res, err, 'レース結果の保存に失敗しました');
   } finally {
     client.release();
   }
