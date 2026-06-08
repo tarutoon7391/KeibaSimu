@@ -256,7 +256,7 @@ export function conditionBadge(displayCondition) {
 
 // 各馬の強さスコア（オッズ用）。ベース値と displayCondition を使う。
 function oddsStrength(horse) {
-  const base = horse.speed * 0.5 + horse.stamina * 0.3 + horse.stability * 0.1 + horse.burst * 0.1;
+  const base = horse.speed * 0.25 + horse.stamina * 0.25 + horse.stability * 0.25 + horse.burst * 0.25;
   const conditionFactor = 0.8 + horse.displayCondition * 0.4; // 0.8〜1.2
   return base * conditionFactor;
 }
@@ -415,7 +415,7 @@ export function stepRace(state, stepIndex) {
     if (h.finished) return h;
     const phase = positionPhase(h.position);
     const styleMult = RUNNING_STYLES[h.runningStyle][phase];
-    const realScore = h.speedReal * 0.5 + h.staminaReal * 0.3 + h.stabilityReal * 0.2;
+    const realScore = h.speedReal * 0.25 + h.staminaReal * 0.25 + h.stabilityReal * 0.25 + h.burst * 0.25;
     const condMult = conditionMultiplier(h.actualCondition);
     // burstMult：終盤（late）のみ有効、序盤・中盤は 1.0
     const burstReal = h.burst * condMult;
