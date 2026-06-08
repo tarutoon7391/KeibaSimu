@@ -182,6 +182,7 @@ const migrations = [
   // users テーブルに週番号・総賞金カラムを追加
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS current_week INTEGER NOT NULL DEFAULT 1;`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS total_prize INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE trained_horses ADD COLUMN IF NOT EXISTS inheritance_bonus_percent INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 async function runMigrations() {
