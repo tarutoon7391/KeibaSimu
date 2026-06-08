@@ -125,15 +125,15 @@ const GACHA_TYPES = [
 
 // 調教種別定義
 const TRAIN_TYPES = [
-  { key: 'speed',        label: 'スピード',   special: false },
-  { key: 'stamina',      label: 'スタミナ',   special: false },
-  { key: 'stability',    label: '安定性',     special: false },
-  { key: 'burst',        label: '瞬発力',     special: false },
-  { key: 'turf_fit',     label: '芝適性',     special: false },
-  { key: 'dirt_fit',     label: 'ダート適性', special: false },
-  { key: 'distance_min', label: '短距離適性', special: false },
-  { key: 'distance_max', label: '長距離適性', special: false },
-  { key: 'running_style',label: '脚質変更',   special: true  },
+  { key: 'speed',         label: 'スピード',   special: false },
+  { key: 'stamina',       label: 'スタミナ',   special: false },
+  { key: 'stability',     label: '安定性',     special: false },
+  { key: 'burst',         label: '瞬発力',     special: false },
+  { key: 'turf_fit',      label: '芝適性',     special: false },
+  { key: 'dirt_fit',      label: 'ダート適性', special: false },
+  { key: 'distance_min',  label: '短距離適性', special: false },
+  { key: 'distance_max',  label: '長距離適性', special: false },
+  { key: 'running_style', label: '脚質変更',   special: true  },
 ];
 
 // 調教グレード定義（コスト・成功率倍率）
@@ -146,21 +146,36 @@ const TRAIN_GRADES = [
 
 // 飼葉種別定義
 const FEED_TYPES = [
-  { key: 'normal',  label: '普通の飼葉',  cost: 500,   effect: '体力を少し回復する'    },
-  { key: 'good',    label: '上質な飼葉',  cost: 2000,  effect: '体力を中程度回復する'  },
-  { key: 'special', label: '特上飼葉',    cost: 8000,  effect: '体力を大きく回復する'  },
-  { key: 'legend',  label: '幻の飼葉',    cost: 30000, effect: '体力を完全回復する'    },
+  { key: '普通', label: '普通の飼葉', cost: 10000,  effect: '体力を少し回復する'   },
+  { key: '上質', label: '上質な飼葉', cost: 40000,  effect: '体力を中程度回復する' },
+  { key: '特上', label: '特上飼葉',   cost: 100000, effect: '体力を大きく回復する' },
+  { key: '幻',   label: '幻の飼葉',   cost: 300000, effect: '体力を完全回復する'   },
 ];
 
-// 固定レース（3勝クラス以下で表示）
+// レース候補の距離・馬場パターン
 const FIXED_RACES = [
-  { name: 'フィクションレース', distance: 1600, track: 'turf' },
-  { name: 'フィクションレース', distance: 1600, track: 'dirt' },
-  { name: 'フィクションレース', distance: 2000, track: 'turf' },
-  { name: 'フィクションレース', distance: 2000, track: 'dirt' },
-  { name: 'フィクションレース', distance: 2400, track: 'turf' },
-  { name: 'フィクションレース', distance: 2400, track: 'dirt' },
+  { distance: 1600, track: 'turf' },
+  { distance: 1600, track: 'dirt' },
+  { distance: 2000, track: 'turf' },
+  { distance: 2000, track: 'dirt' },
+  { distance: 2400, track: 'turf' },
+  { distance: 2400, track: 'dirt' },
 ];
+
+const RUNNING_STYLE_OPTIONS = ['逃げ', '先行', '差し', '追込', '大逃げ', '直線一気', 'まくり'];
+
+const GRADE_BADGE = {
+  shinjuba:  { label: '新馬戦',    color: 'bg-slate-500' },
+  mishousen: { label: '未勝利戦',  color: 'bg-slate-500' },
+  '1sho':    { label: '1勝クラス', color: 'bg-slate-500' },
+  '2sho':    { label: '2勝クラス', color: 'bg-slate-500' },
+  '3sho':    { label: '3勝クラス', color: 'bg-slate-500' },
+  listed:    { label: 'L',         color: 'bg-slate-500' },
+  open:      { label: 'OP',        color: 'bg-yellow-600' },
+  g3:        { label: 'G3',        color: 'bg-green-600'  },
+  g2:        { label: 'G2',        color: 'bg-red-600'    },
+  g1:        { label: 'G1',        color: 'bg-blue-600'   },
+};
 
 const TRAINING_RACE_BASE_PRIZES = {
   shinjuba: 200000,
@@ -206,11 +221,11 @@ async function apiAdoptHorse(horseData, name) {
   });
 }
 
-// 馬を引退させる（inheritType: 'low' | 'normal' | 'high'）
-async function apiRetireHorse(inheritType) {
+// 馬を引退させる
+async function apiRetireHorse(hallOfFame, inheritanceType) {
   return apiFetch('/api/horse/retire', {
     method: 'POST',
-    body: JSON.stringify({ inherit_type: inheritType }),
+    body: JSON.stringify({ hallOfFame, inheritanceType }),
   });
 }
 
@@ -316,6 +331,90 @@ function formatDistanceFit(distanceFit) {
 
 function normalizeRaceGrade(raceGrade) {
   return String(raceGrade || '').trim().toLowerCase();
+}
+
+function normalizeDistanceValue(value, edge, fallback) {
+  if (Number.isFinite(value)) return Math.round(value);
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return Math.round(numeric);
+  if (value && typeof value === 'object') {
+    const primary = edge === 'min' ? value.min : value.max;
+    const secondary = edge === 'min' ? value.max : value.min;
+    const primaryNumeric = Number(primary);
+    if (Number.isFinite(primaryNumeric)) return Math.round(primaryNumeric);
+    const secondaryNumeric = Number(secondary);
+    if (Number.isFinite(secondaryNumeric)) return Math.round(secondaryNumeric);
+  }
+  return fallback;
+}
+
+function normalizeHorseData(horse) {
+  if (!horse || typeof horse !== 'object') return horse ?? null;
+  const distanceMin = normalizeDistanceValue(horse.distance_min, 'min', 1000);
+  const distanceMax = normalizeDistanceValue(horse.distance_max, 'max', 3200);
+  return {
+    ...horse,
+    distance_min: Math.min(distanceMin, distanceMax),
+    distance_max: Math.max(distanceMin, distanceMax),
+  };
+}
+
+function formatHorseDistanceRange(horse) {
+  const normalizedHorse = normalizeHorseData(horse);
+  if (!normalizedHorse) return '---';
+  return `${normalizedHorse.distance_min}〜${normalizedHorse.distance_max}m`;
+}
+
+function getGradeBadgeInfo(grade) {
+  const normalizedGrade = normalizeRaceGrade(grade);
+  return GRADE_BADGE[normalizedGrade] ?? {
+    label: normalizedGrade || '未設定',
+    color: 'bg-slate-500',
+  };
+}
+
+function getRegisteredRacePanelClass(grade) {
+  switch (normalizeRaceGrade(grade)) {
+    case 'g3':
+      return 'bg-green-950/40 border-green-600';
+    case 'g2':
+      return 'bg-red-950/40 border-red-600';
+    case 'g1':
+      return 'bg-blue-950/40 border-blue-600';
+    case 'open':
+      return 'bg-yellow-950/40 border-yellow-600';
+    default:
+      return 'bg-slate-800 border-slate-700';
+  }
+}
+
+function buildTrainingRaceCards(grades) {
+  return (Array.isArray(grades) ? grades : []).flatMap((grade) => {
+    const normalizedGrade = normalizeRaceGrade(grade);
+    const badge = getGradeBadgeInfo(normalizedGrade);
+    const prize = TRAINING_RACE_BASE_PRIZES[normalizedGrade] ?? 0;
+    return FIXED_RACES.map((race, index) => {
+      const trackLabel = race.track === 'turf' ? '芝' : 'ダート';
+      return {
+        id: `${normalizedGrade}-${race.track}-${race.distance}-${index}`,
+        name: `${badge.label} ${race.distance}m ${trackLabel}`,
+        grade: normalizedGrade,
+        distance: race.distance,
+        track: race.track,
+        prize,
+      };
+    });
+  });
+}
+
+function isSameRaceEntry(race, entry) {
+  if (!race || !entry) return false;
+  return (
+    normalizeRaceGrade(race.grade) === normalizeRaceGrade(entry.raceGrade)
+    && race.distance === entry.distance
+    && (race.track ?? race.trackType) === entry.trackType
+    && race.name === entry.raceName
+  );
 }
 
 function buildPrizeForTrainingRace(raceGrade, rank) {
@@ -963,7 +1062,7 @@ function LoginPage({ onAuth }) {
 // ===== 育成モード =====
 // coins / setCoins: 親Pageから受け取るコイン状態
 // authUser: 認証済みユーザー情報
-function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
+function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEntryRegistered }) {
   // タブ管理
   const [activeTab, setActiveTab] = useState('myHorse'); // myHorse | gacha | train | race | hallOfFame
   // 育成馬
@@ -1010,7 +1109,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
     setHorseLoading(true);
     try {
       const data = await apiGetHorse();
-      setCurrentHorse(data.horse ?? null);
+      setCurrentHorse(normalizeHorseData(data.horse ?? null));
     } catch {
       setCurrentHorse(null);
     } finally {
@@ -1028,7 +1127,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
     if (activeTab === 'race' && currentHorse) {
       setRacesLoading(true);
       apiGetRaces()
-        .then((data) => setApiRaces(data.races ?? []))
+        .then((data) => setApiRaces(buildTrainingRaceCards(data.grades ?? [])))
         .catch(() => setApiRaces([]))
         .finally(() => setRacesLoading(false));
     }
@@ -1077,7 +1176,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
       const newCoins = coins - cost;
       setCoins(newCoins);
       if (authUser) apiUpdateCoins(newCoins).catch(() => {});
-      setGachaResult(Array.isArray(data?.results) ? data.results : []);
+      setGachaResult(Array.isArray(data?.results) ? data.results.map(normalizeHorseData) : []);
       setSelectedGachaHorse(null);
       setAdoptName('');
     } catch (err) {
@@ -1096,7 +1195,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
     try {
       await apiAdoptHorse({ gachaId: targetHorse.id }, adoptName.trim());
       const latestHorse = await apiGetHorse();
-      setCurrentHorse(latestHorse?.horse ?? null);
+      setCurrentHorse(normalizeHorseData(latestHorse?.horse ?? null));
       closeGachaModal();
       setActiveTab('myHorse');
     } catch (err) {
@@ -1110,7 +1209,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
   const handleRetire = async () => {
     setRetireLoading(true);
     try {
-      const data = await apiRetireHorse(inheritType);
+      const data = await apiRetireHorse(true, inheritType);
       setRetireResultData(data);
       setCurrentHorse(null);
       onRaceEntryRegistered(null);
@@ -1129,7 +1228,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
     setRetireLoading(true);
     try {
       const data = await apiInheritHorse(retireResultData, inheritName.trim());
-      setCurrentHorse(data.horse ?? null);
+      setCurrentHorse(normalizeHorseData(data.horse ?? null));
       onRaceEntryRegistered(null);
       setRetireModal(false);
       setRetireResultData(null);
@@ -1176,7 +1275,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
       const newCoins = coins - cost;
       setCoins(newCoins);
       if (authUser) apiUpdateCoins(newCoins).catch(() => {});
-      if (data.horse) setCurrentHorse(data.horse);
+      if (data.horse) setCurrentHorse(normalizeHorseData(data.horse));
       setTrainResult(data);
     } catch (err) {
       setError(err.message);
@@ -1211,7 +1310,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
       const newCoins = coins - cost;
       setCoins(newCoins);
       if (authUser) apiUpdateCoins(newCoins).catch(() => {});
-      if (data.horse) setCurrentHorse(data.horse);
+      if (data.horse) setCurrentHorse(normalizeHorseData(data.horse));
       setTrainResult(data);
     } catch (err) {
       setError(err.message);
@@ -1238,7 +1337,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
       const newCoins = coins - info.cost;
       setCoins(newCoins);
       if (authUser) apiUpdateCoins(newCoins).catch(() => {});
-      if (data.horse) setCurrentHorse(data.horse);
+      if (data.horse) setCurrentHorse(normalizeHorseData(data.horse));
       setTrainResult(data);
     } catch (err) {
       setError(err.message);
@@ -1252,6 +1351,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
     setEnterLoading(true);
     setError('');
     try {
+      const normalizedHorse = normalizeHorseData(currentHorse);
       const payload = {
         raceName: race.name,
         raceGrade: race.grade ?? null,
@@ -1264,7 +1364,8 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
         raceGrade: data.raceGrade ?? payload.raceGrade ?? 'open',
         distance: payload.distance,
         trackType: payload.trackType,
-        horse: currentHorse,
+        prize: race.prize ?? buildPrizeForTrainingRace(payload.raceGrade, 1),
+        horse: normalizedHorse,
       });
       setRaceResult({
         message: `「${payload.raceName}」に出走登録しました。次のレースで出走します。`,
@@ -1382,7 +1483,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
 
               {/* 距離適性 */}
               <p className="text-slate-300 text-sm">
-                距離適性: {currentHorse.distance_min}〜{currentHorse.distance_max}m
+                距離適性: {formatHorseDistanceRange(currentHorse)}
               </p>
 
               {/* レベル・EXPバー */}
@@ -1558,7 +1659,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
                 {trainType === 'running_style' && (
                   <>
                     <div className="flex flex-wrap gap-2">
-                      {['逃げ', '先行', '差し', '追込', '大逃げ', '直線一気', 'まくり'].map((style) => (
+                      {RUNNING_STYLE_OPTIONS.map((style) => (
                         <button
                           key={style}
                           type="button"
@@ -1628,36 +1729,84 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
           ) : racesLoading ? (
             <p className="text-slate-400 text-center py-8">レース情報読み込み中...</p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {/* 固定レース（3勝クラス以下）＋ APIから取得したレース */}
-              {[...FIXED_RACES, ...apiRaces].map((race, idx) => (
-                <div key={idx} className="bg-slate-800 rounded-2xl p-4 flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-white font-semibold text-sm">{race.name}</h3>
-                    {race.grade && (
-                      <span className="text-xs bg-yellow-700 text-yellow-100 px-2 py-0.5 rounded-full">
-                        {race.grade}
-                      </span>
-                    )}
+            <>
+              {registeredRaceEntry ? (
+                <div className={`rounded-2xl border p-4 ${getRegisteredRacePanelClass(registeredRaceEntry.raceGrade)}`}>
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-2.5 py-1 text-xs font-bold text-white rounded-full ${getGradeBadgeInfo(registeredRaceEntry.raceGrade).color}`}>
+                          {getGradeBadgeInfo(registeredRaceEntry.raceGrade).label}
+                        </span>
+                        <span className="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-600 text-white">
+                          ✅ 出走登録済み
+                        </span>
+                      </div>
+                      <h3 className="text-white font-bold text-base">{registeredRaceEntry.raceName}</h3>
+                      <div className="text-slate-300 text-sm flex gap-3 flex-wrap">
+                        <span>距離: {registeredRaceEntry.distance}m</span>
+                        <span>馬場: {registeredRaceEntry.trackType === 'turf' ? '芝' : 'ダート'}</span>
+                        <span>賞金(1着): {(registeredRaceEntry.prize ?? buildPrizeForTrainingRace(registeredRaceEntry.raceGrade, 1)).toLocaleString()}C</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-slate-400 text-xs flex gap-3">
-                    <span>距離: {race.distance}m</span>
-                    <span>馬場: {race.track === 'turf' ? '芝' : 'ダート'}</span>
-                  </div>
-                  {race.prize ? (
-                    <span className="text-amber-400 text-xs">賞金: {race.prize.toLocaleString()}C</span>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={enterLoading}
-                    onClick={() => handleEnterRace(race)}
-                    className="mt-auto py-2 bg-emerald-700 hover:bg-emerald-600 disabled:bg-slate-600 text-white text-sm font-semibold rounded-xl transition"
-                  >
-                    出走登録
-                  </button>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="bg-slate-800 rounded-2xl p-4 text-slate-300">
+                  まだ出走登録していません
+                </div>
+              )}
+
+              {apiRaces.length === 0 ? (
+                <div className="bg-slate-800 rounded-2xl p-6 text-center text-slate-300">
+                  出走可能なレースがありません。
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {apiRaces.map((race) => {
+                    const badge = getGradeBadgeInfo(race.grade);
+                    const registered = isSameRaceEntry(race, registeredRaceEntry);
+                    return (
+                      <div
+                        key={race.id}
+                        className={`bg-slate-800 rounded-2xl p-4 flex flex-col gap-2 border-2 ${
+                          registered ? 'border-emerald-500' : 'border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="space-y-2">
+                            <span className={`inline-flex px-2 py-0.5 text-xs text-white font-semibold rounded-full ${badge.color}`}>
+                              {badge.label}
+                            </span>
+                            <h3 className="text-white font-semibold text-sm">{race.name}</h3>
+                          </div>
+                          {registered && (
+                            <span className="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full">
+                              ✅ 出走登録済み
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-slate-400 text-xs flex gap-3 flex-wrap">
+                          <span>距離: {race.distance}m</span>
+                          <span>馬場: {race.track === 'turf' ? '芝' : 'ダート'}</span>
+                        </div>
+                        {race.prize ? (
+                          <span className="text-amber-400 text-xs">賞金: {race.prize.toLocaleString()}C</span>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={enterLoading || Boolean(registeredRaceEntry)}
+                          onClick={() => handleEnterRace(race)}
+                          className="mt-auto py-2 bg-emerald-700 hover:bg-emerald-600 disabled:bg-slate-600 disabled:text-slate-400 text-white text-sm font-semibold rounded-xl transition"
+                        >
+                          出走登録
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1938,7 +2087,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
                           {lbl}: <span className="text-white font-semibold">{statLabel(val)}</span>
                         </p>
                       ))}
-                      <p className="text-slate-300">距離: {horse.distance_min}〜{horse.distance_max}m</p>
+                      <p className="text-slate-300">距離: {formatHorseDistanceRange(horse)}</p>
                       <button
                         type="button"
                         onClick={() => setSelectedGachaHorse(horse)}
@@ -2010,7 +2159,7 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
                     </p>
                   ))}
                   <p className="text-slate-300">
-                    距離: {selectedHorse?.distance_min}〜{selectedHorse?.distance_max}m
+                    距離: {formatHorseDistanceRange(selectedHorse)}
                   </p>
                 </div>
                 <p className="text-slate-300 text-sm">馬名を入力して育成を開始しますか？</p>
@@ -2303,7 +2452,7 @@ export default function Page() {
   const prepareNewRace = useCallback(async () => {
     let nextRaceDistance = null;
     let nextRaceTrack = null;
-    let registeredHorse = registeredRaceEntry?.horse ?? null;
+    let registeredHorse = normalizeHorseData(registeredRaceEntry?.horse ?? null);
     const raceMeta = registeredRaceEntry ?? { raceGrade: 'open', raceName: 'フィクションレース' };
     if (authUser) {
       try {
@@ -2316,7 +2465,7 @@ export default function Page() {
     if (!registeredHorse && Number.isInteger(nextRaceDistance) && (nextRaceTrack === 'turf' || nextRaceTrack === 'dirt')) {
       try {
         const horseData = await apiGetHorse();
-        registeredHorse = horseData?.horse ?? null;
+        registeredHorse = normalizeHorseData(horseData?.horse ?? null);
       } catch {
         registeredHorse = null;
       }
@@ -2619,6 +2768,7 @@ export default function Page() {
             coins={coins}
             setCoins={setCoins}
             authUser={authUser}
+            registeredRaceEntry={registeredRaceEntry}
             onRaceEntryRegistered={handleRaceEntryRegistered}
           />
         )}
