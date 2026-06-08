@@ -27,41 +27,49 @@ app.use('/api/', apiLimiter);
 const JWT_SECRET = process.env.JWT_SECRET || 'keibasimu-dev-secret';
 const SALT_ROUNDS = 10;
 const VALID_BET_TYPES = ['単勝', '複勝', '馬連', '馬単', '3連複', '3連単'];
-const VALID_GACHA_TYPES = ['speed', 'stamina', 'stability', 'burst', 'turf', 'dirt', 'premium'];
+// 有効なガチャタイプ
+const VALID_GACHA_TYPES = ['speed','stamina','stability','burst','turf','dirt','premium'];
 const VALID_GACHA_COUNTS = [1, 10];
 const RANK_LABELS = [
   'E-','E','E+','D-','D','D+','C-','C','C+','B-','B','B+',
   'A-','A','A+','S-','S','S+','SS-','SS','SS+','SSS-','SSS','SSS+','Z-','Z','Z+'
 ];
 const RANK_SCORES = [68, 70, 72, 73, 74, 75, 76, 77, 79, 80, 82, 83, 84, 86, 87, 88, 90, 92, 93, 95, 96, 97, 99, 100, 101, 103, 104];
+// 通常ガチャの重みテーブル（rank値: 0=E-〜19=SS）
 const NORMAL_GACHA_WEIGHTS = [
-  { value: 0, weight: 40 },
-  { value: 1, weight: 30 },
-  { value: 2, weight: 15 },
-  { value: 3, weight: 8 },
-  { value: 4, weight: 5 },
-  { value: 5, weight: 2 },
+  { value: 0, weight: 40 }, // E-
+  { value: 1, weight: 30 }, // E
+  { value: 2, weight: 15 }, // E+
+  { value: 3, weight: 8  }, // D-
+  { value: 4, weight: 5  }, // D
+  { value: 5, weight: 2  }, // D+
 ];
+
+// プレミアムガチャの重みテーブル
 const PREMIUM_GACHA_WEIGHTS = [
-  { value: 3, weight: 30 },
-  { value: 4, weight: 25 },
-  { value: 5, weight: 20 },
-  { value: 6, weight: 12 },
-  { value: 7, weight: 8 },
-  { value: 8, weight: 3 },
-  { value: 9, weight: 1.5 },
-  { value: 10, weight: 0.5 },
+  { value: 3,  weight: 30 }, // D-
+  { value: 4,  weight: 25 }, // D
+  { value: 5,  weight: 20 }, // D+
+  { value: 6,  weight: 12 }, // C-
+  { value: 7,  weight: 8  }, // C
+  { value: 8,  weight: 3  }, // C+
+  { value: 9,  weight: 1.5}, // B-
+  { value: 10, weight: 0.5}, // B
 ];
+
+// 距離適性の重みテーブル
 const DISTANCE_GACHA_WEIGHTS = [
-  { value: { min: 1000, max: 1600 }, weight: 33 },
-  { value: { min: 1600, max: 2400 }, weight: 34 },
-  { value: { min: 2400, max: 3200 }, weight: 33 },
+  { value: { min: 1000, max: 1600 }, weight: 33 }, // short
+  { value: { min: 1600, max: 2400 }, weight: 34 }, // mile
+  { value: { min: 2400, max: 3200 }, weight: 33 }, // long
 ];
+
+// 脚質の重みテーブル（大逃げ・直線一気・まくりは除外）
 const RUNNING_STYLE_WEIGHTS = [
-  { value: '逃げ', weight: 25 },
-  { value: '先行', weight: 25 },
-  { value: '差し', weight: 25 },
-  { value: '追込', weight: 25 },
+  { value: '逃げ',  weight: 25 },
+  { value: '先行',  weight: 25 },
+  { value: '差し',  weight: 25 },
+  { value: '追込',  weight: 25 },
 ];
 const RUNNING_STYLES = {
   大逃げ:   { early: 1.75, middle: 1.45, late: 0.47 },
@@ -85,14 +93,15 @@ const FEED_CONFIG = {
   幻: { cost: 300000, multiplier: 1.0 },
 };
 const SPECIAL_TRAINING_COST = 200000;
+// ガチャコスト
 const GACHA_COSTS = {
-  speed: { 1: 30000, 10: 270000 },
-  stamina: { 1: 30000, 10: 270000 },
-  stability: { 1: 30000, 10: 270000 },
-  burst: { 1: 30000, 10: 270000 },
-  turf: { 1: 30000, 10: 270000 },
-  dirt: { 1: 30000, 10: 270000 },
-  premium: { 1: 500000, 10: 4500000 },
+  speed:    { 1: 30000,  10: 270000  },
+  stamina:  { 1: 30000,  10: 270000  },
+  stability:{ 1: 30000,  10: 270000  },
+  burst:    { 1: 30000,  10: 270000  },
+  turf:     { 1: 30000,  10: 270000  },
+  dirt:     { 1: 30000,  10: 270000  },
+  premium:  { 1: 500000, 10: 4500000 },
 };
 const TRAINING_TARGETS = ['speed', 'stamina', 'stability', 'burst', 'turf_fit', 'dirt_fit', 'distance_min', 'distance_max'];
 const FEED_TARGETS = ['speed', 'stamina', 'stability', 'burst', 'turf_fit', 'dirt_fit'];
@@ -277,20 +286,49 @@ function rankToScore(rank) {
 }
 
 function buildGachaHorse(gachaType) {
-  const statusWeights = gachaType === 'premium' ? PREMIUM_GACHA_WEIGHTS : NORMAL_GACHA_WEIGHTS;
+  const baseWeights = gachaType === 'premium' ? PREMIUM_GACHA_WEIGHTS : NORMAL_GACHA_WEIGHTS;
+
+  // 特化ガチャ用の重みテーブル（該当ステータスのみ上振れ）
+  const boostedWeights = [
+    { value: 0, weight: 20 }, // E-
+    { value: 1, weight: 25 }, // E
+    { value: 2, weight: 25 }, // E+
+    { value: 3, weight: 15 }, // D-
+    { value: 4, weight: 10 }, // D
+    { value: 5, weight: 5  }, // D+
+  ];
+
   const distanceRange = pickWeighted(DISTANCE_GACHA_WEIGHTS);
-  return {
-    gacha_type: gachaType,
-    speed_rank: pickWeighted(statusWeights),
-    stamina_rank: pickWeighted(statusWeights),
-    stability_rank: pickWeighted(statusWeights),
-    burst_rank: pickWeighted(statusWeights),
-    turf_fit_rank: pickWeighted(statusWeights),
-    dirt_fit_rank: pickWeighted(statusWeights),
-    distance_min: distanceRange.min,
-    distance_max: distanceRange.max,
-    running_style: pickWeighted(RUNNING_STYLE_WEIGHTS),
+
+  // 特化ガチャの対象ステータスマップ
+  const boostMap = {
+    speed:    'speed_rank',
+    stamina:  'stamina_rank',
+    stability:'stability_rank',
+    burst:    'burst_rank',
+    turf:     'turf_fit_rank',
+    dirt:     'dirt_fit_rank',
   };
+
+  const result = {
+    gacha_type:     gachaType,
+    speed_rank:     pickWeighted(baseWeights),
+    stamina_rank:   pickWeighted(baseWeights),
+    stability_rank: pickWeighted(baseWeights),
+    burst_rank:     pickWeighted(baseWeights),
+    turf_fit_rank:  pickWeighted(baseWeights),
+    dirt_fit_rank:  pickWeighted(baseWeights),
+    distance_min:   distanceRange.min,
+    distance_max:   distanceRange.max,
+    running_style:  pickWeighted(RUNNING_STYLE_WEIGHTS),
+  };
+
+  // 特化対象のステータスだけ上振れ排出率で上書き
+  if (boostMap[gachaType]) {
+    result[boostMap[gachaType]] = pickWeighted(boostedWeights);
+  }
+
+  return result;
 }
 
 function calculateGrowthChance(growthCount, gradeMultiplier, inheritanceBonusPercent = 0) {
