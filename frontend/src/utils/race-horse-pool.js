@@ -465,7 +465,6 @@ export const RACE_HORSE_POOL = {
     { name: "フォーエバーヤング", speed: 14, stamina: 13, stability: 13, burst: 14 },
     { name: "レガレイラ", speed: 14, stamina: 13, stability: 13, burst: 15 },
   ],
-};
 
   // ===== G2 =====
 
