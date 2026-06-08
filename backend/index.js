@@ -86,7 +86,6 @@ const TRAINING_CONFIG = {
   高級: { cost: 60000, multiplier: 0.5 },
   英才: { cost: 150000, multiplier: 1.0 },
 };
-// 調教コストテーブル
 const TRAINING_COSTS = {
   通常: 5000,
   上質: 20000,
@@ -100,14 +99,12 @@ const FEED_CONFIG = {
   特上: { cost: 100000, multiplier: 0.5 },
   幻: { cost: 300000, multiplier: 1.0 },
 };
-// 飼葉コストテーブル
 const FEED_COSTS = {
   普通: 10000,
   上質: 40000,
   特上: 100000,
-  幻:   300000,
+  幻: 300000,
 };
-const SPECIAL_TRAINING_COST = 200000;
 // ガチャコスト
 const GACHA_COSTS = {
   speed:    { 1: 30000,  10: 270000  },
@@ -120,7 +117,7 @@ const GACHA_COSTS = {
 };
 const TRAINING_TARGETS = ['speed', 'stamina', 'stability', 'burst', 'turf_fit', 'dirt_fit', 'distance_min', 'distance_max'];
 const FEED_TARGETS = ['speed', 'stamina', 'stability', 'burst', 'turf_fit', 'dirt_fit'];
-const SPECIAL_RUNNING_STYLES = ['逃げ', '先行', '差し', '追込', '大逃げ', '直線一気', 'まくり'];
+const VALID_RUNNING_STYLES = ['逃げ', '先行', '差し', '追込', '大逃げ', '直線一気', 'まくり'];
 const TARGET_TO_COLUMNS = {
   speed: { rank: 'speed_rank', growth: 'speed_growth' },
   stamina: { rank: 'stamina_rank', growth: 'stamina_growth' },
@@ -1299,7 +1296,7 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
 
     // 脚質変更（grade === 'special' かつ target === 'running_style'）
     if (type === 'training' && grade === 'special' && target === 'running_style') {
-      if (!SPECIAL_RUNNING_STYLES.includes(runningStyle)) {
+      if (!VALID_RUNNING_STYLES.includes(runningStyle)) {
         throw createHttpError(400, '無効な脚質です');
       }
       const cost = TRAINING_COSTS.special;
