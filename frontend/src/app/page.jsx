@@ -246,10 +246,10 @@ const TRAIN_GRADES = [
 
 // 飼葉種別定義
 const FEED_TYPES = [
-  { key: '普通', label: '普通の飼葉', cost: 10000,  effect: '体力を少し回復する'   },
-  { key: '上質', label: '上質な飼葉', cost: 40000,  effect: '体力を中程度回復する' },
-  { key: '特上', label: '特上飼葉',   cost: 100000, effect: '体力を大きく回復する' },
-  { key: '幻',   label: '幻の飼葉',   cost: 300000, effect: '体力を完全回復する'   },
+  { key: '普通', label: '普通の飼葉', cost: 10000,  effect: 'ランダムな2つのステータスをわずかに強化する' },
+  { key: '上質', label: '上質な飼葉', cost: 40000,  effect: 'ランダムな2つのステータスを少し強化する'     },
+  { key: '特上', label: '特上飼葉',   cost: 100000, effect: 'ランダムな2つのステータスをしっかり強化する' },
+  { key: '幻',   label: '幻の飼葉',   cost: 300000, effect: 'ランダムな2つのステータスを大幅に強化する'   },
 ];
 
 // レース候補の距離・馬場パターン
@@ -1268,6 +1268,23 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
   const isFeedDoneThisWeek = Boolean(currentHorse?.fed_this_week);
   const trainResultMessage = (() => {
     if (!trainResult) return '';
+    if (trainResult.type === 'feed') {
+      const statLabels = {
+        speed: 'スピード',
+        stamina: 'スタミナ',
+        stability: '安定感',
+        burst: '瞬発力',
+        turf_fit: '芝適性',
+        dirt_fit: 'ダート適性',
+      };
+      const successResults = (Array.isArray(trainResult.results) ? trainResult.results : []).filter((item) => item.success);
+      if (successResults.length === 0) {
+        return '❌ 今回は効果がありませんでした';
+      }
+      return successResults
+        .map((item) => `✅ ${statLabels[item.target] ?? item.target}: ${RANK_LABELS[item.beforeRank] ?? '-'} → ${RANK_LABELS[item.afterRank] ?? '-'}`)
+        .join('\n');
+    }
     if (trainResult.isStyleChange) {
       return `🔄 脚質を ${trainResult.beforeStyle ?? '-'} → ${trainResult.afterStyle ?? '-'} に変更しました`;
     }
@@ -2321,7 +2338,7 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-sm flex flex-col gap-4">
             <h3 className="text-white font-bold text-lg">調教結果</h3>
-            <p className="text-slate-200 text-sm">{trainResultMessage}</p>
+            <p className="text-slate-200 text-sm whitespace-pre-line">{trainResultMessage}</p>
             <button
               type="button"
               onClick={() => setTrainResult(null)}
@@ -2721,6 +2738,9 @@ export default function Page() {
               .then((saved) => {
                 if (saved?.user?.coins != null) {
                   setCoins(saved.user.coins);
+                }
+                if (saved?.horse) {
+                  setCurrentHorse(normalizeHorseData(saved.horse));
                 }
                 setTrainedRaceResult((prevResult) =>
                   prevResult ? { ...prevResult, levelUp: Boolean(saved?.levelUp), horse: saved?.horse ?? null } : prevResult

@@ -483,6 +483,30 @@ async function syncUserTotalPrize(client, userId) {
   return totalPrize;
 }
 
+async function advanceUserWeek(client, userId) {
+  const { rows } = await client.query(
+    `UPDATE users
+        SET current_week = CASE WHEN current_week >= 52 THEN 1 ELSE current_week + 1 END
+      WHERE id = $1
+      RETURNING id, username, coins, current_week`,
+    [userId]
+  );
+  if (rows.length === 0) {
+    throw createHttpError(404, 'ユーザーが見つかりません');
+  }
+  await client.query(
+    `UPDATE trained_horses
+        SET trained_this_week = FALSE,
+            fed_this_week = FALSE,
+            updated_at = NOW()
+      WHERE user_id = $1
+        AND is_deleted = FALSE
+        AND is_retired = FALSE`,
+    [userId]
+  );
+  return rows[0];
+}
+
 async function syncHorseRaceStats(client, horseId) {
   const { rows } = await client.query(
     `SELECT
@@ -1436,7 +1460,13 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
         nextFields[targetColumn.growth] = currentGrowth + 1;
         nextFields[targetColumn.rank] = clamp(currentRank + 1, 0, 26);
       }
-      results.push({ target: selectedTarget, chance: roundToOneDecimal(chance), success });
+      results.push({
+        target: selectedTarget,
+        chance: roundToOneDecimal(chance),
+        success,
+        beforeRank: currentRank,
+        afterRank: success ? clamp(currentRank + 1, 0, 26) : currentRank,
+      });
     }
     const updatedHorse = await updateHorse(client, horse.id, nextFields);
     const changedTargets = results.filter((item) => item.success).map((item) => item.target);
@@ -1781,12 +1811,13 @@ app.post('/api/horse/race-result', authMiddleware, async (req, res) => {
       [prize, req.userId]
     );
     await syncUserTotalPrize(client, req.userId);
-    const updatedUser = await getUserById(client, req.userId);
+    const updatedUser = await advanceUserWeek(client, req.userId);
+    const updatedHorse = await getActiveHorse(client, req.userId);
 
     await client.query('COMMIT');
     res.json({
       levelUp,
-      horse: syncedHorse,
+      horse: updatedHorse ?? syncedHorse,
       user: updatedUser,
       raceResult: resultRows[0],
     });
@@ -1803,33 +1834,12 @@ app.post('/api/week/advance', authMiddleware, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows } = await client.query(
-      `UPDATE users
-          SET current_week = CASE WHEN current_week >= 52 THEN 1 ELSE current_week + 1 END
-        WHERE id = $1
-        RETURNING id, username, coins, current_week`,
-      [req.userId]
-    );
-    if (rows.length === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'ユーザーが見つかりません' });
-    }
-    await client.query(
-      `UPDATE trained_horses
-          SET trained_this_week = FALSE,
-              fed_this_week = FALSE,
-              updated_at = NOW()
-        WHERE user_id = $1
-          AND is_deleted = FALSE
-          AND is_retired = FALSE`,
-      [req.userId]
-    );
+    const user = await advanceUserWeek(client, req.userId);
     await client.query('COMMIT');
-    res.json(rows[0]);
+    res.json(user);
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error(err);
-    res.status(500).json({ error: '週送りに失敗しました' });
+    handleApiError(res, err, '週送りに失敗しました');
   } finally {
     client.release();
   }
