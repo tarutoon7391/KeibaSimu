@@ -464,34 +464,60 @@ async function syncHorseRaceStats(client, horseId) {
 }
 
 function determineAvailableRaceGrades(horse) {
-  if (!horse.has_raced) {
-    return RACE_GRADE_PROGRESS.shinjuba;
+  const grades = [];
+  const h = horse;
+
+  // 新馬戦（初出走限定）
+  if (!h.has_raced) {
+    grades.push('shinjuba');
   }
-  if (horse.win_g2 > 0) {
-    return RACE_GRADE_PROGRESS.g2;
+
+  // 未勝利戦（勝利なし限定）
+  if (h.has_raced && h.total_wins === 0) {
+    grades.push('mishousen');
   }
-  if (horse.win_g3 > 0) {
-    return RACE_GRADE_PROGRESS.g3;
+
+  // 1勝クラス
+  if (h.win_shinjuba > 0 || h.win_mishousen > 0) {
+    grades.push('1sho');
   }
-  if (horse.win_open > 0) {
-    return RACE_GRADE_PROGRESS.open;
+
+  // 2勝クラス
+  if (h.win_1sho > 0) {
+    grades.push('2sho');
   }
-  if (horse.win_listed > 0) {
-    return RACE_GRADE_PROGRESS.listed;
+
+  // 3勝クラス
+  if (h.win_2sho > 0) {
+    grades.push('3sho');
   }
-  if (horse.win_3sho > 0) {
-    return RACE_GRADE_PROGRESS.win3;
+
+  // L（リステッド）
+  if (h.win_shinjuba > 0 || h.win_mishousen > 0) {
+    grades.push('listed');
   }
-  if (horse.win_2sho > 0) {
-    return RACE_GRADE_PROGRESS.win2;
+
+  // G3：新馬戦 or 3勝クラス勝利
+  if (h.win_shinjuba > 0 || h.win_3sho > 0) {
+    grades.push('g3');
   }
-  if (horse.win_1sho > 0) {
-    return RACE_GRADE_PROGRESS.win1;
+
+  // OP
+  if (h.win_listed > 0) {
+    grades.push('open');
   }
-  if (horse.win_shinjuba > 0 || horse.win_mishousen > 0) {
-    return RACE_GRADE_PROGRESS.firstWin;
+
+  // G2
+  if (h.win_g3 > 0) {
+    grades.push('g2');
   }
-  return RACE_GRADE_PROGRESS.mishousen;
+
+  // G1
+  if (h.win_g2 > 0) {
+    grades.push('g1');
+  }
+
+  return grades;
 }
 
 function buildInheritanceRanks(horse, inheritanceType) {
@@ -506,11 +532,32 @@ function buildInheritanceRanks(horse, inheritanceType) {
     const down = randomInt(risk.min, risk.max);
     inheritedRanks[field] = clamp(horse[field] - down + bonusStages, 0, 26);
   }
-  inheritedRanks.distance_min = horse.distance_min;
-  inheritedRanks.distance_max = horse.distance_max;
   inheritedRanks.running_style = horse.running_style;
   inheritedRanks.level_bonus_percent = getLevelBonusPercent(horse.level);
-  return { inheritedRanks, bonusStages };
+
+  // 距離適性の継承計算
+  const parentMin = horse.distance_min;
+  const parentMax = horse.distance_max;
+
+  const minVariation = Math.floor(Math.random() * 801) - 200;
+  let inheritedMin = parentMin + minVariation;
+
+  const maxVariation = Math.floor(Math.random() * 801) - 600;
+  let inheritedMax = parentMax + maxVariation;
+
+  inheritedMin = Math.max(1000, Math.min(3200, inheritedMin));
+  inheritedMax = Math.max(1000, Math.min(3200, inheritedMax));
+
+  if (inheritedMax - inheritedMin < 400) {
+    const center = Math.floor((inheritedMin + inheritedMax) / 2);
+    inheritedMin = Math.max(1000, center - 200);
+    inheritedMax = Math.min(3200, center + 200);
+  }
+
+  inheritedRanks.distance_min = inheritedMin;
+  inheritedRanks.distance_max = inheritedMax;
+
+  return { inheritedRanks, bonusStages, inheritedDistanceMin: inheritedMin, inheritedDistanceMax: inheritedMax };
 }
 
 function normalizeInheritedRanks(input, parentHorse) {
@@ -1325,7 +1372,7 @@ app.post('/api/horse/retire', authMiddleware, async (req, res) => {
     }
     horse = await syncHorseRaceStats(client, horse.id);
     await syncUserTotalPrize(client, req.userId);
-    const { inheritedRanks, bonusStages } = buildInheritanceRanks(horse, inheritanceType);
+    const { inheritedRanks, bonusStages, inheritedDistanceMin, inheritedDistanceMax } = buildInheritanceRanks(horse, inheritanceType);
     if (hallOfFame) {
       await client.query(
         `INSERT INTO hall_of_fame (
@@ -1365,6 +1412,8 @@ app.post('/api/horse/retire', authMiddleware, async (req, res) => {
       bonusStages,
       levelBonusPercent: inheritedRanks.level_bonus_percent,
       inheritedRanks,
+      inheritedDistanceMin,
+      inheritedDistanceMax,
     });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -1396,7 +1445,7 @@ app.post('/api/horse/delete', authMiddleware, async (req, res) => {
 
 // 継承馬作成
 app.post('/api/horse/inherit', authMiddleware, async (req, res) => {
-  const { name, inheritedRanks } = req.body || {};
+  const { name, inheritedRanks, distanceMin, distanceMax } = req.body || {};
   const trimmedName = typeof name === 'string' ? name.trim() : '';
   if (!trimmedName) {
     return res.status(400).json({ error: 'name は必須です' });
@@ -1412,7 +1461,13 @@ app.post('/api/horse/inherit', authMiddleware, async (req, res) => {
     if (!parentHorse) {
       throw createHttpError(404, '継承元の育成馬が見つかりません');
     }
-    const normalizedRanks = normalizeInheritedRanks(inheritedRanks, parentHorse);
+    // body の distanceMin / distanceMax を distance_min / distance_max として反映
+    const ranksWithDistance = {
+      ...inheritedRanks,
+      ...(Number.isInteger(distanceMin) ? { distance_min: distanceMin } : {}),
+      ...(Number.isInteger(distanceMax) ? { distance_max: distanceMax } : {}),
+    };
+    const normalizedRanks = normalizeInheritedRanks(ranksWithDistance, parentHorse);
     const inheritanceBonusPercent = getLevelBonusPercent(parentHorse.level);
     const { rows } = await client.query(
       `INSERT INTO trained_horses (
@@ -1458,7 +1513,7 @@ app.get('/api/horse/races', authMiddleware, async (req, res) => {
     }
     horse = await syncHorseRaceStats(client, horse.id);
     await syncUserTotalPrize(client, req.userId);
-    res.json({ availableGrades: determineAvailableRaceGrades(horse) });
+    res.json({ grades: determineAvailableRaceGrades(horse) });
   } catch (err) {
     handleApiError(res, err, '出走可能レースの取得に失敗しました');
   } finally {
