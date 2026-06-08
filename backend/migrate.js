@@ -183,6 +183,8 @@ const migrations = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS current_week INTEGER NOT NULL DEFAULT 1;`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS total_prize INTEGER NOT NULL DEFAULT 0;`,
   `ALTER TABLE trained_horses ADD COLUMN IF NOT EXISTS inheritance_bonus_percent INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE trained_horses ADD COLUMN IF NOT EXISTS trained_this_week BOOLEAN NOT NULL DEFAULT FALSE;`,
+  `ALTER TABLE trained_horses ADD COLUMN IF NOT EXISTS fed_this_week BOOLEAN NOT NULL DEFAULT FALSE;`,
 ];
 
 async function runMigrations() {
