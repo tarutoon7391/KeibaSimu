@@ -11,11 +11,11 @@
 
 // 脚質テーブル（時間ベースのフェーズ倍率）
 export const RUNNING_STYLES = {
-  大逃げ:   { early: 1.55, middle: 1.28, late: 0.47, description: '序盤から全力。終盤でバテる' },
-  逃げ:     { early: 0.92, middle: 1.00, late: 1.18, description: '先頭を走りながらスタミナ温存' },
-  先行:     { early: 0.85, middle: 1.02, late: 1.23, description: '先団に位置し粘り強く走る' },
-  差し:     { early: 0.90, middle: 1.06, late: 1.14, description: '中団で足をため終盤に加速' },
-  追込:     { early: 0.82, middle: 0.86, late: 1.52, description: '後方待機から直線で追い込む' },
+  大逃げ:   { early: 1.60, middle: 1.32, late: 0.47, description: '序盤から全力。終盤でバテる' },
+  逃げ:     { early: 0.88, middle: 1.00, late: 1.18, description: '先頭を走りながらスタミナ温存' },
+  先行:     { early: 0.85, middle: 1.02, late: 1.15, description: '先団に位置し粘り強く走る' },
+  差し:     { early: 0.90, middle: 1.06, late: 1.00, description: '中団で足をため終盤に加速' },
+  追込:     { early: 0.82, middle: 0.86, late: 1.45, description: '後方待機から直線で追い込む' },
   直線一気: { early: 0.78, middle: 0.75, late: 1.87, description: '直線のみで勝負する大博打' },
   まくり:   { early: 0.75, middle: 1.62, late: 0.73, description: '3コーナーから一気に進出' },
 };
