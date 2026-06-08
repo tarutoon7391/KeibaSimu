@@ -2446,6 +2446,7 @@ export default function Page() {
   const [registeredRaceEntry, setRegisteredRaceEntry] = useState(null);
   const [trainedRaceResult, setTrainedRaceResult] = useState(null);
   const timerRef = useRef(null);
+  const previousPhaseRef = useRef(phase);
 
   // 認証状態
   const [authUser, setAuthUser] = useState(null);
@@ -2755,7 +2756,9 @@ export default function Page() {
                 );
                 setRegisteredRaceEntry(null);
               })
-              .catch(() => {});
+              .catch(() => {
+                setRegisteredRaceEntry(null);
+              });
           }
         }
         setPhase('result');
@@ -2764,6 +2767,14 @@ export default function Page() {
       return next;
     });
   }, [stepIndex, phase, lastBet, authUser, isDebugRace, hasPlayerHorseInRace, registeredRaceEntry, raceConfig]);
+
+  useEffect(() => {
+    const previousPhase = previousPhaseRef.current;
+    if (previousPhase === 'result' && phase !== 'result') {
+      setRegisteredRaceEntry(null);
+    }
+    previousPhaseRef.current = phase;
+  }, [phase]);
 
   // 選択中の馬の表示文字列
   const selectionLabel = useMemo(() => {
