@@ -86,11 +86,26 @@ const TRAINING_CONFIG = {
   高級: { cost: 60000, multiplier: 0.5 },
   英才: { cost: 150000, multiplier: 1.0 },
 };
+// 調教コストテーブル
+const TRAINING_COSTS = {
+  通常: 5000,
+  上質: 20000,
+  高級: 60000,
+  英才: 150000,
+  special: 200000,
+};
 const FEED_CONFIG = {
   普通: { cost: 10000, multiplier: 0.125 },
   上質: { cost: 40000, multiplier: 0.25 },
   特上: { cost: 100000, multiplier: 0.5 },
   幻: { cost: 300000, multiplier: 1.0 },
+};
+// 飼葉コストテーブル
+const FEED_COSTS = {
+  普通: 10000,
+  上質: 40000,
+  特上: 100000,
+  幻:   300000,
 };
 const SPECIAL_TRAINING_COST = 200000;
 // ガチャコスト
@@ -105,7 +120,7 @@ const GACHA_COSTS = {
 };
 const TRAINING_TARGETS = ['speed', 'stamina', 'stability', 'burst', 'turf_fit', 'dirt_fit', 'distance_min', 'distance_max'];
 const FEED_TARGETS = ['speed', 'stamina', 'stability', 'burst', 'turf_fit', 'dirt_fit'];
-const SPECIAL_RUNNING_STYLES = ['逃げ', '先行', '差し', '追込'];
+const SPECIAL_RUNNING_STYLES = ['逃げ', '先行', '差し', '追込', '大逃げ', '直線一気', 'まくり'];
 const TARGET_TO_COLUMNS = {
   speed: { rank: 'speed_rank', growth: 'speed_growth' },
   stamina: { rank: 'stamina_rank', growth: 'stamina_growth' },
@@ -1263,7 +1278,7 @@ app.post('/api/horse/adopt', authMiddleware, async (req, res) => {
 
 // 調教・飼葉実行
 app.post('/api/horse/train', authMiddleware, async (req, res) => {
-  const { type, grade, target } = req.body || {};
+  const { type, grade, target, runningStyle } = req.body || {};
   if (type !== 'training' && type !== 'feed') {
     return res.status(400).json({ error: 'type は training または feed である必要があります' });
   }
@@ -1282,42 +1297,49 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
       throw createHttpError(400, '今週の飼葉は与え済みです');
     }
 
-    if (type === 'training' && SPECIAL_RUNNING_STYLES.includes(target)) {
-      const user = await deductCoins(client, req.userId, SPECIAL_TRAINING_COST);
-      if (horse.running_style === target) {
+    // 脚質変更（grade === 'special' かつ target === 'running_style'）
+    if (type === 'training' && grade === 'special' && target === 'running_style') {
+      if (!SPECIAL_RUNNING_STYLES.includes(runningStyle)) {
+        throw createHttpError(400, '無効な脚質です');
+      }
+      const cost = TRAINING_COSTS.special;
+      if (horse.running_style === runningStyle) {
         throw createHttpError(400, '既にその脚質です');
       }
+      const user = await deductCoins(client, req.userId, cost);
       horse = await updateHorse(client, horse.id, {
-        running_style: target,
+        running_style: runningStyle,
         training_count: horse.training_count + 1,
-        total_coins_invested: horse.total_coins_invested + SPECIAL_TRAINING_COST,
+        total_coins_invested: horse.total_coins_invested + cost,
         trained_this_week: true,
       });
       await client.query(
         `INSERT INTO training_logs (horse_id, user_id, type, grade, target, cost, success, stat_changed)
          VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7)`,
-        [horse.id, req.userId, type, grade || '特別', target, SPECIAL_TRAINING_COST, 'running_style']
+        [horse.id, req.userId, type, grade, target, cost, 'running_style']
       );
       await client.query('COMMIT');
       return res.json({
         success: true,
         type,
-        grade: grade || '特別',
+        grade,
         target,
-        cost: SPECIAL_TRAINING_COST,
+        runningStyle,
+        cost,
         remainingCoins: user.coins,
         horse,
       });
     }
 
     if (type === 'training') {
-      if (!TRAINING_CONFIG[grade]) {
+      const cost = TRAINING_COSTS[grade];
+      if (cost === undefined) {
         throw createHttpError(400, '無効な grade です');
       }
       if (!TRAINING_TARGETS.includes(target)) {
         throw createHttpError(400, '無効な target です');
       }
-      const user = await deductCoins(client, req.userId, TRAINING_CONFIG[grade].cost);
+      const user = await deductCoins(client, req.userId, cost);
       const targetColumn = TARGET_TO_COLUMNS[target];
       const chance = calculateGrowthChance(
         horse[targetColumn.growth],
@@ -1332,13 +1354,13 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
           [targetColumn.rank]: nextHorse[targetColumn.rank],
           [targetColumn.growth]: nextHorse[targetColumn.growth],
           training_count: horse.training_count + 1,
-          total_coins_invested: horse.total_coins_invested + TRAINING_CONFIG[grade].cost,
+          total_coins_invested: horse.total_coins_invested + cost,
           trained_this_week: true,
         });
       } else {
         updatedHorse = await updateHorse(client, horse.id, {
           training_count: horse.training_count + 1,
-          total_coins_invested: horse.total_coins_invested + TRAINING_CONFIG[grade].cost,
+          total_coins_invested: horse.total_coins_invested + cost,
           trained_this_week: true,
         });
       }
@@ -1351,7 +1373,7 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
           type,
           grade,
           target,
-          TRAINING_CONFIG[grade].cost,
+          cost,
           success,
           success ? target : null,
         ]
@@ -1363,20 +1385,21 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
         grade,
         target,
         chance: roundToOneDecimal(chance),
-        cost: TRAINING_CONFIG[grade].cost,
+        cost,
         remainingCoins: user.coins,
         horse: updatedHorse,
       });
     }
 
-    if (!FEED_CONFIG[grade]) {
+    const feedCost = FEED_COSTS[grade];
+    if (feedCost === undefined) {
       throw createHttpError(400, '無効な grade です');
     }
     const selectedTargets = shuffle(FEED_TARGETS).slice(0, 2);
-    const user = await deductCoins(client, req.userId, FEED_CONFIG[grade].cost);
+    const user = await deductCoins(client, req.userId, feedCost);
     const nextFields = {
       training_count: horse.training_count + 1,
-      total_coins_invested: horse.total_coins_invested + FEED_CONFIG[grade].cost,
+      total_coins_invested: horse.total_coins_invested + feedCost,
       fed_this_week: true,
     };
     const results = [];
@@ -1407,7 +1430,7 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
         type,
         grade,
         selectedTargets.join(','),
-        FEED_CONFIG[grade].cost,
+        feedCost,
         changedTargets.length > 0,
         changedTargets.length > 0 ? changedTargets.join(',') : null,
       ]
@@ -1416,7 +1439,7 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
     res.json({
       type,
       grade,
-      cost: FEED_CONFIG[grade].cost,
+      cost: feedCost,
       remainingCoins: user.coins,
       results,
       horse: updatedHorse,

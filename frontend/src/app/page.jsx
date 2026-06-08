@@ -125,23 +125,23 @@ const GACHA_TYPES = [
 
 // 調教種別定義
 const TRAIN_TYPES = [
-  { key: 'speed',         label: 'スピード',    special: false },
-  { key: 'stamina',       label: 'スタミナ',    special: false },
-  { key: 'stability',     label: '安定性',      special: false },
-  { key: 'burst',         label: '瞬発力',      special: false },
-  { key: 'turf_fit',      label: '芝適性',      special: false },
-  { key: 'dirt_fit',      label: 'ダート適性',  special: false },
-  { key: 'distance_min',  label: '距離下限',    special: true  },
-  { key: 'distance_max',  label: '距離上限',    special: true  },
-  { key: 'running_style', label: '脚質',        special: true  },
+  { key: 'speed',        label: 'スピード',   special: false },
+  { key: 'stamina',      label: 'スタミナ',   special: false },
+  { key: 'stability',    label: '安定性',     special: false },
+  { key: 'burst',        label: '瞬発力',     special: false },
+  { key: 'turf_fit',     label: '芝適性',     special: false },
+  { key: 'dirt_fit',     label: 'ダート適性', special: false },
+  { key: 'distance_min', label: '短距離適性', special: false },
+  { key: 'distance_max', label: '長距離適性', special: false },
+  { key: 'running_style',label: '脚質変更',   special: true  },
 ];
 
 // 調教グレード定義（コスト・成功率倍率）
 const TRAIN_GRADES = [
-  { key: 'normal',  label: '通常',  cost: 1000,  rateMult: 1.0  },
-  { key: 'good',    label: '上質',  cost: 5000,  rateMult: 1.1  },
-  { key: 'high',    label: '高級',  cost: 20000, rateMult: 1.25 },
-  { key: 'special', label: '英才',  cost: 80000, rateMult: 1.5  },
+  { key: '通常', label: '通常',  cost: 5000,   rateMult: 1.0  },
+  { key: '上質', label: '上質',  cost: 20000,  rateMult: 1.1  },
+  { key: '高級', label: '高級',  cost: 60000,  rateMult: 1.25 },
+  { key: '英才', label: '英才',  cost: 150000, rateMult: 1.5  },
 ];
 
 // 飼葉種別定義
@@ -228,10 +228,10 @@ async function apiDeleteHorse() {
 }
 
 // 調教を実施する
-async function apiTrainHorse(type, grade) {
+async function apiTrainHorse(target, grade) {
   return apiFetch('/api/horse/train', {
     method: 'POST',
-    body: JSON.stringify({ type, grade }),
+    body: JSON.stringify({ type: 'training', grade, target }),
   });
 }
 
@@ -986,9 +986,11 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
   const [deleteLoading, setDeleteLoading] = useState(false);
   // 調教・飼葉
   const [trainType, setTrainType] = useState('speed');
-  const [trainGrade, setTrainGrade] = useState('normal');
+  const [trainGrade, setTrainGrade] = useState('通常');
   const [trainLoading, setTrainLoading] = useState(false);
   const [trainResult, setTrainResult] = useState(null);
+  // 脚質変更で選択中の脚質
+  const [selectedRunningStyle, setSelectedRunningStyle] = useState(null);
   // レース
   const [apiRaces, setApiRaces] = useState([]);
   const [racesLoading, setRacesLoading] = useState(false);
@@ -1171,6 +1173,41 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
     try {
       const data = await apiTrainHorse(trainType, trainGrade);
       const cost = data.cost ?? gradeInfo.cost;
+      const newCoins = coins - cost;
+      setCoins(newCoins);
+      if (authUser) apiUpdateCoins(newCoins).catch(() => {});
+      if (data.horse) setCurrentHorse(data.horse);
+      setTrainResult(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setTrainLoading(false);
+    }
+  };
+
+  // 脚質変更を実施する（200,000C）
+  const RUNNING_STYLE_CHANGE_COST = 200000;
+  const handleChangeRunningStyle = async () => {
+    if (isTrainingDoneThisWeek) {
+      setError('今週の調教は実施済みです');
+      return;
+    }
+    if (!selectedRunningStyle) {
+      setError('変更先の脚質を選択してください');
+      return;
+    }
+    if (coins < RUNNING_STYLE_CHANGE_COST) {
+      setError(`コインが不足しています（必要: ${RUNNING_STYLE_CHANGE_COST.toLocaleString()}C）`);
+      return;
+    }
+    setError('');
+    setTrainLoading(true);
+    try {
+      const data = await apiFetch('/api/horse/train', {
+        method: 'POST',
+        body: JSON.stringify({ type: 'training', grade: 'special', target: 'running_style', runningStyle: selectedRunningStyle }),
+      });
+      const cost = data.cost ?? RUNNING_STYLE_CHANGE_COST;
       const newCoins = coins - cost;
       setCoins(newCoins);
       if (authUser) apiUpdateCoins(newCoins).catch(() => {});
@@ -1483,36 +1520,69 @@ function TrainingMode({ coins, setCoins, authUser, onRaceEntryRegistered }) {
                     </button>
                   ))}
                 </div>
-                {/* グレード選択 */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {TRAIN_GRADES.map((g) => {
-                    const rate = calcSuccessRate(currentHorse.growth_stages, g.rateMult);
-                    return (
-                      <button
-                        key={g.key}
-                        type="button"
-                        onClick={() => setTrainGrade(g.key)}
-                        className={`p-3 rounded-xl text-left flex flex-col gap-1 transition border-2 ${
-                          trainGrade === g.key
-                            ? 'border-blue-500 bg-blue-900/40'
-                            : 'border-transparent bg-slate-700 hover:bg-slate-600'
-                        }`}
-                      >
-                        <span className="text-white text-sm font-bold">{g.label}</span>
-                        <span className="text-slate-400 text-xs">{g.cost.toLocaleString()}C</span>
-                        <span className="text-green-400 text-xs">成功率 {rate}%</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  disabled={trainLoading || isTrainingDoneThisWeek}
-                  onClick={handleTrain}
-                  className="py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-bold rounded-xl transition"
-                >
-                  {trainLoading ? '調教中...' : isTrainingDoneThisWeek ? '今週実施済み' : '調教する'}
-                </button>
+                {/* グレード選択（脚質変更選択時は非表示） */}
+                {trainType !== 'running_style' && (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {TRAIN_GRADES.map((g) => {
+                        const rate = calcSuccessRate(currentHorse.growth_stages, g.rateMult);
+                        return (
+                          <button
+                            key={g.key}
+                            type="button"
+                            onClick={() => setTrainGrade(g.key)}
+                            className={`p-3 rounded-xl text-left flex flex-col gap-1 transition border-2 ${
+                              trainGrade === g.key
+                                ? 'border-blue-500 bg-blue-900/40'
+                                : 'border-transparent bg-slate-700 hover:bg-slate-600'
+                            }`}
+                          >
+                            <span className="text-white text-sm font-bold">{g.label}</span>
+                            <span className="text-slate-400 text-xs">{g.cost.toLocaleString()}C</span>
+                            <span className="text-green-400 text-xs">成功率 {rate}%</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={trainLoading || isTrainingDoneThisWeek}
+                      onClick={handleTrain}
+                      className="py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-bold rounded-xl transition"
+                    >
+                      {trainLoading ? '調教中...' : isTrainingDoneThisWeek ? '今週実施済み' : '調教する'}
+                    </button>
+                  </>
+                )}
+                {/* 脚質変更UI（脚質変更選択時のみ表示） */}
+                {trainType === 'running_style' && (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      {['逃げ', '先行', '差し', '追込', '大逃げ', '直線一気', 'まくり'].map((style) => (
+                        <button
+                          key={style}
+                          type="button"
+                          onClick={() => setSelectedRunningStyle(style)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition border ${
+                            selectedRunningStyle === style
+                              ? 'bg-purple-600 text-white border-purple-500'
+                              : 'bg-slate-700 text-slate-300 border-transparent hover:bg-slate-600'
+                          }`}
+                        >
+                          {style}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={trainLoading || isTrainingDoneThisWeek || !selectedRunningStyle}
+                      onClick={handleChangeRunningStyle}
+                      className="py-2.5 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 text-white font-bold rounded-xl transition"
+                    >
+                      {trainLoading ? '変更中...' : isTrainingDoneThisWeek ? '今週実施済み' : `脚質変更する（200,000C）`}
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* 飼葉セクション */}
