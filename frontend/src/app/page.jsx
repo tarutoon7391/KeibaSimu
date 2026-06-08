@@ -989,6 +989,8 @@ function TrainingMode({ coins, setCoins, authUser }) {
     const rate = 80 * Math.pow(2 / 3, growthStages ?? 0) * rateMult;
     return Math.min(100, rate).toFixed(1);
   };
+  const isTrainingDoneThisWeek = Boolean(currentHorse?.trained_this_week);
+  const isFeedDoneThisWeek = Boolean(currentHorse?.fed_this_week);
 
   // ガチャを引く
   const handleGacha = async (gachaType, count) => {
@@ -1080,6 +1082,10 @@ function TrainingMode({ coins, setCoins, authUser }) {
 
   // 調教を実施する
   const handleTrain = async () => {
+    if (isTrainingDoneThisWeek) {
+      setError('今週の調教は実施済みです');
+      return;
+    }
     const gradeInfo = TRAIN_GRADES.find((g) => g.key === trainGrade);
     if (coins < gradeInfo.cost) {
       setError(`コインが不足しています（必要: ${gradeInfo.cost.toLocaleString()}C）`);
@@ -1104,6 +1110,10 @@ function TrainingMode({ coins, setCoins, authUser }) {
 
   // 飼葉を与える
   const handleFeed = async (feedKey) => {
+    if (isFeedDoneThisWeek) {
+      setError('今週の飼葉は与え済みです');
+      return;
+    }
     const info = FEED_TYPES.find((f) => f.key === feedKey);
     if (coins < info.cost) {
       setError(`コインが不足しています（必要: ${info.cost.toLocaleString()}C）`);
@@ -1409,11 +1419,11 @@ function TrainingMode({ coins, setCoins, authUser }) {
                 </div>
                 <button
                   type="button"
-                  disabled={trainLoading}
+                  disabled={trainLoading || isTrainingDoneThisWeek}
                   onClick={handleTrain}
                   className="py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-bold rounded-xl transition"
                 >
-                  {trainLoading ? '調教中...' : '調教する'}
+                  {trainLoading ? '調教中...' : isTrainingDoneThisWeek ? '今週実施済み' : '調教する'}
                 </button>
               </div>
 
@@ -1428,11 +1438,11 @@ function TrainingMode({ coins, setCoins, authUser }) {
                       <p className="text-slate-300 text-xs">{f.effect}</p>
                       <button
                         type="button"
-                        disabled={trainLoading || coins < f.cost}
+                        disabled={trainLoading || coins < f.cost || isFeedDoneThisWeek}
                         onClick={() => handleFeed(f.key)}
                         className="mt-auto py-1.5 bg-emerald-700 hover:bg-emerald-600 disabled:bg-slate-600 disabled:text-slate-400 text-white text-xs font-semibold rounded-lg transition"
                       >
-                        与える
+                        {isFeedDoneThisWeek ? '今週実施済み' : '与える'}
                       </button>
                     </div>
                   ))}

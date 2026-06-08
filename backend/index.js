@@ -164,6 +164,7 @@ const HORSE_UPDATE_COLUMNS = new Set([
   'total_races', 'total_wins', 'total_prize', 'win_shinjuba', 'win_mishousen', 'win_1sho',
   'win_2sho', 'win_3sho', 'win_listed', 'win_open', 'win_g3', 'win_g2', 'win_g1', 'has_raced',
   'is_retired', 'is_deleted', 'is_hall_of_fame', 'inheritance_bonus_percent',
+  'trained_this_week', 'fed_this_week',
 ]);
 
 // JWT認証ミドルウェア
@@ -1152,6 +1153,12 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
       throw createHttpError(404, '育成馬が見つかりません');
     }
     horse = await syncHorseRaceStats(client, horse.id);
+    if (type === 'training' && horse.trained_this_week) {
+      throw createHttpError(400, '今週の調教は実施済みです');
+    }
+    if (type === 'feed' && horse.fed_this_week) {
+      throw createHttpError(400, '今週の飼葉は与え済みです');
+    }
 
     if (type === 'training' && SPECIAL_RUNNING_STYLES.includes(target)) {
       const user = await deductCoins(client, req.userId, SPECIAL_TRAINING_COST);
@@ -1162,6 +1169,7 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
         running_style: target,
         training_count: horse.training_count + 1,
         total_coins_invested: horse.total_coins_invested + SPECIAL_TRAINING_COST,
+        trained_this_week: true,
       });
       await client.query(
         `INSERT INTO training_logs (horse_id, user_id, type, grade, target, cost, success, stat_changed)
@@ -1203,11 +1211,13 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
           [targetColumn.growth]: nextHorse[targetColumn.growth],
           training_count: horse.training_count + 1,
           total_coins_invested: horse.total_coins_invested + TRAINING_CONFIG[grade].cost,
+          trained_this_week: true,
         });
       } else {
         updatedHorse = await updateHorse(client, horse.id, {
           training_count: horse.training_count + 1,
           total_coins_invested: horse.total_coins_invested + TRAINING_CONFIG[grade].cost,
+          trained_this_week: true,
         });
       }
       await client.query(
@@ -1245,6 +1255,7 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
     const nextFields = {
       training_count: horse.training_count + 1,
       total_coins_invested: horse.total_coins_invested + FEED_CONFIG[grade].cost,
+      fed_this_week: true,
     };
     const results = [];
     for (const selectedTarget of selectedTargets) {
@@ -1517,8 +1528,10 @@ app.post('/api/horse/enter', authMiddleware, async (req, res) => {
 
 // 週送り
 app.post('/api/week/advance', authMiddleware, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       `UPDATE users
           SET current_week = CASE WHEN current_week >= 52 THEN 1 ELSE current_week + 1 END
         WHERE id = $1
@@ -1526,12 +1539,27 @@ app.post('/api/week/advance', authMiddleware, async (req, res) => {
       [req.userId]
     );
     if (rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'ユーザーが見つかりません' });
     }
+    await client.query(
+      `UPDATE trained_horses
+          SET trained_this_week = FALSE,
+              fed_this_week = FALSE,
+              updated_at = NOW()
+        WHERE user_id = $1
+          AND is_deleted = FALSE
+          AND is_retired = FALSE`,
+      [req.userId]
+    );
+    await client.query('COMMIT');
     res.json(rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: '週送りに失敗しました' });
+  } finally {
+    client.release();
   }
 });
 
