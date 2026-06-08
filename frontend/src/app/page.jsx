@@ -143,6 +143,10 @@ function createRaceHorseFromRanks({
   staminaRank,
   stabilityRank,
   burstRank,
+  speed_rank,
+  stamina_rank,
+  stability_rank,
+  burst_rank,
   turfFitRank,
   dirtFitRank,
   distanceFit = 'all',
@@ -151,19 +155,23 @@ function createRaceHorseFromRanks({
 }) {
   const trueCondition = Math.random();
   const displayCondition = Math.max(0, Math.min(1, trueCondition + (Math.random() - 0.5) * 0.7));
+  const resolvedSpeedRank = speed_rank ?? speedRank;
+  const resolvedStaminaRank = stamina_rank ?? staminaRank;
+  const resolvedStabilityRank = stability_rank ?? stabilityRank;
+  const resolvedBurstRank = burst_rank ?? burstRank;
   return {
     id,
     name,
-    speed: rankToStat(speedRank),
-    stamina: rankToStat(staminaRank),
-    stability: rankToStat(stabilityRank),
-    burst: rankToStat(burstRank),
+    speed: rankToStat(resolvedSpeedRank),
+    stamina: rankToStat(resolvedStaminaRank),
+    stability: rankToStat(resolvedStabilityRank),
+    burst: rankToStat(resolvedBurstRank),
     turfFit: rankToStat(turfFitRank),
     dirtFit: rankToStat(dirtFitRank),
-    speedGrade: rankToLabel(speedRank),
-    staminaGrade: rankToLabel(staminaRank),
-    stabilityGrade: rankToLabel(stabilityRank),
-    burstGrade: rankToLabel(burstRank),
+    speedGrade: rankToLabel(resolvedSpeedRank),
+    staminaGrade: rankToLabel(resolvedStaminaRank),
+    stabilityGrade: rankToLabel(resolvedStabilityRank),
+    burstGrade: rankToLabel(resolvedBurstRank),
     turfFitGrade: rankToLabel(turfFitRank),
     dirtFitGrade: rankToLabel(dirtFitRank),
     distanceFit,
