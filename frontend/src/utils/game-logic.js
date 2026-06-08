@@ -197,7 +197,7 @@ export function selectHorsesFromPool(count = HORSE_COUNT) {
   const shuffled = [...HORSE_POOL].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count).map((raw, i) => {
     const trueCondition = Math.random();
-    const displayCondition = clamp(trueCondition + gaussianNoise(0, 0.2), 0, 1);
+    const displayCondition = clamp(trueCondition + gaussianNoise(0, 0.35), 0, 1);
     return {
       id: i + 1,
       name: raw.name,
@@ -285,9 +285,9 @@ export function rollActualCondition(trueCondition) {
   return clamp(trueCondition + gaussianNoise(0, 0.25), 0, 1);
 }
 
-// actualCondition から調子係数を算出（0.85〜1.15）
+// actualCondition から調子係数を算出（0.75〜1.25）
 export function conditionMultiplier(actualCondition) {
-  return 0.85 + actualCondition * 0.3;
+  return 0.75 + actualCondition * 0.5;
 }
 
 // 補正済みステータス値を返す（距離・馬場適性を含む）
@@ -421,7 +421,7 @@ export function stepRace(state, stepIndex) {
     const burstReal = h.burst * condMult;
     const burstMult = phase === 'late' ? 1.0 + (burstReal - 68) / 300 : 1.0;
     // stability 実値が低いほど乱数幅が大きい
-    const noiseRange = clamp(1.2 - h.stabilityReal / 120, 0.15, 0.7);
+    const noiseRange = clamp(1.2 - h.stabilityReal / 100, 0.05, 0.5);
     const random = 1 + (Math.random() * 2 - 1) * noiseRange;
     const advance = (realScore / 68) * styleMult * pace * condMult * burstMult * random;
     let newPos = h.position + advance;
