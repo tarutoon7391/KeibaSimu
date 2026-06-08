@@ -128,6 +128,16 @@ const TARGET_TO_COLUMNS = {
   distance_min: { rank: 'distance_min', growth: 'distance_min_growth' },
   distance_max: { rank: 'distance_max', growth: 'distance_max_growth' },
 };
+const STAT_LABELS = {
+  speed_rank: 'スピード',
+  stamina_rank: 'スタミナ',
+  stability_rank: '安定性',
+  burst_rank: '瞬発力',
+  turf_fit_rank: '芝適性',
+  dirt_fit_rank: 'ダート適性',
+  distance_min: '短距離適性',
+  distance_max: '長距離適性',
+};
 const EXPERIENCE_REQUIREMENTS = [
   333, 333, 333, 333, 333, 333, 333, 333, 336,
   700, 700, 700, 700, 700, 700, 700, 700, 700, 700,
@@ -1303,6 +1313,7 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
       if (horse.running_style === runningStyle) {
         throw createHttpError(400, '既にその脚質です');
       }
+      const beforeStyle = horse.running_style;
       const user = await deductCoins(client, req.userId, cost);
       horse = await updateHorse(client, horse.id, {
         running_style: runningStyle,
@@ -1318,6 +1329,10 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
       await client.query('COMMIT');
       return res.json({
         success: true,
+        isStyleChange: true,
+        beforeStyle,
+        afterStyle: horse.running_style,
+        trainedThisWeek: true,
         type,
         grade,
         target,
@@ -1344,7 +1359,9 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
         horse.inheritance_bonus_percent || 0
       );
       const success = Math.random() * 100 < chance;
+      const before = horse[targetColumn.rank];
       let updatedHorse = horse;
+      let after = before;
       if (success) {
         const nextHorse = buildHorseStatChange(target, horse);
         updatedHorse = await updateHorse(client, horse.id, {
@@ -1354,6 +1371,7 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
           total_coins_invested: horse.total_coins_invested + cost,
           trained_this_week: true,
         });
+        after = updatedHorse[targetColumn.rank];
       } else {
         updatedHorse = await updateHorse(client, horse.id, {
           training_count: horse.training_count + 1,
@@ -1378,6 +1396,10 @@ app.post('/api/horse/train', authMiddleware, async (req, res) => {
       await client.query('COMMIT');
       return res.json({
         success,
+        statChanged: success ? (STAT_LABELS[targetColumn.rank] ?? targetColumn.rank) : undefined,
+        before: success ? before : undefined,
+        after: success ? after : undefined,
+        trainedThisWeek: true,
         type,
         grade,
         target,
