@@ -264,10 +264,10 @@ const TRAIN_GROWTH_KEYS = {
 
 // 調教グレード定義（コスト・成功率倍率）
 const TRAIN_GRADES = [
-  { key: '通常', label: '通常',  cost: 5000,   rateMult: 1.0  },
-  { key: '上質', label: '上質',  cost: 20000,  rateMult: 1.1  },
-  { key: '高級', label: '高級',  cost: 60000,  rateMult: 1.25 },
-  { key: '英才', label: '英才',  cost: 150000, rateMult: 1.5  },
+  { key: '通常', label: '通常',  cost: 5000,   rateMult: 0.125 },
+  { key: '上質', label: '上質',  cost: 20000,  rateMult: 0.25  },
+  { key: '高級', label: '高級',  cost: 60000,  rateMult: 0.5   },
+  { key: '英才', label: '英才',  cost: 150000, rateMult: 1.0   },
 ];
 
 // 飼葉種別定義
@@ -1298,7 +1298,7 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
   // 調教成功率の表示計算（UIのみ）
   // 式: 80 * (2/3)^成長段階数 * グレード倍率
   const calcSuccessRate = (growthStages, rateMult) => {
-    const rate = 80 * Math.pow(2 / 3, growthStages ?? 0) * rateMult;
+    const rate = 100 * Math.pow(2 / 3, growthStages ?? 0) * rateMult;
     return Math.min(100, rate).toFixed(1);
   };
   const isTrainingDoneThisWeek = Boolean(currentHorse?.trained_this_week);
