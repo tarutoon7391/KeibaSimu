@@ -413,7 +413,7 @@ async function apiGetHallOfFame() {
 async function apiBattle(horseIds) {
   return apiFetch('/api/hall-of-fame/battle', {
     method: 'POST',
-    body: JSON.stringify({ horse_ids: horseIds }),
+    body: JSON.stringify({ horseIds }),
   });
 }
 
@@ -440,6 +440,15 @@ const COURSE_LABELS = {
   short: '短距離',
   mile: '中距離',
   long: '長距離',
+};
+
+const INHERITED_RANK_LABELS = {
+  speed_rank: 'スピード',
+  stamina_rank: 'スタミナ',
+  stability_rank: '安定性',
+  burst_rank: '瞬発力',
+  turf_fit_rank: '芝適性',
+  dirt_fit_rank: 'ダート適性',
 };
 
 function formatDistanceFit(distanceFit) {
@@ -2170,11 +2179,18 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
               <>
                 <h3 className="text-white font-bold text-lg">継承結果</h3>
                 <div className="bg-slate-700 rounded-xl p-3 text-sm text-slate-200 space-y-1 max-h-40 overflow-y-auto">
-                  {retireResultData.stats
-                    ? Object.entries(retireResultData.stats).map(([k, v]) => (
-                        <p key={k}>{k}: <span className="text-white font-semibold">{statLabel(v)}</span></p>
-                      ))
-                    : <p className="text-slate-400">ステータス情報がありません</p>}
+                  {(() => {
+                    const rankRows = Object.entries(INHERITED_RANK_LABELS)
+                      .filter(([key]) => retireResultData.inheritedRanks?.[key] != null)
+                      .map(([key, label]) => (
+                        <p key={key}>
+                          {label}: <span className="text-white font-semibold">{statLabel(retireResultData.inheritedRanks[key])}</span>
+                        </p>
+                      ));
+                    return rankRows.length
+                      ? rankRows
+                      : <p className="text-slate-400">ステータス情報がありません</p>;
+                  })()}
                 </div>
                 <p className="text-slate-300 text-sm">継承馬の名前を入力してください：</p>
                 <input
@@ -2193,13 +2209,6 @@ function TrainingMode({ coins, setCoins, authUser, registeredRaceEntry, onRaceEn
                     className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 text-white font-semibold rounded-xl transition"
                   >
                     {retireLoading ? '処理中...' : '継承する'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setRetireModal(false); setRetireResultData(null); setInheritName(''); }}
-                    className="flex-1 py-2 bg-slate-600 hover:bg-slate-500 text-white font-semibold rounded-xl transition"
-                  >
-                    スキップ
                   </button>
                 </div>
               </>
